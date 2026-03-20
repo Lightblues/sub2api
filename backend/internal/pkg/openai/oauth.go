@@ -15,8 +15,8 @@ import (
 
 // OpenAI OAuth Constants (from CRS project - Codex CLI client)
 const (
-	// OAuth Client ID for OpenAI (Codex CLI official)
-	ClientID = "app_EMoamEEZ73f0CkXaXp7hrann"
+	// OAuth Client ID for OpenAI (switched to Sora client for bulk RT import) [custom]
+	ClientID = "app_LlGpXReQgckcGGUo2JrYvtJK"
 	// OAuth Client ID for Sora mobile flow (aligned with sora2api)
 	SoraClientID = "app_LlGpXReQgckcGGUo2JrYvtJK"
 
