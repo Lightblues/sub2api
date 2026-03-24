@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,9 +22,52 @@ type requestLogRecord struct {
 	Ts               int64            `json:"ts"`
 	UserID           int64            `json:"user_id,omitempty"`
 	APIKeyID         int64            `json:"api_key_id,omitempty"`
+	RequestHeaders   map[string]string `json:"request_headers,omitempty"`
 	RequestBody      json.RawMessage  `json:"request_body"`
 	ResponseComplete json.RawMessage  `json:"response_complete,omitempty"`
 	ResponseBody     *json.RawMessage `json:"response_body,omitempty"`
+}
+
+// headersForLog are the request headers worth preserving in the request log.
+// Excludes auth tokens (x-api-key, authorization) for security.
+var headersForLog = []string{
+	"user-agent",
+	"anthropic-version",
+	"anthropic-beta",
+	"x-stainless-lang",
+	"x-stainless-package-version",
+	"x-stainless-os",
+	"x-stainless-arch",
+	"x-stainless-runtime",
+	"x-stainless-runtime-version",
+	"x-stainless-helper-method",
+	"content-type",
+	"accept",
+	"x-app",
+}
+
+// extractRequestHeaders picks relevant headers from the gin context for logging.
+func extractRequestHeaders(c *gin.Context) map[string]string {
+	if c == nil || c.Request == nil {
+		return nil
+	}
+	h := make(map[string]string, len(headersForLog))
+	for _, k := range headersForLog {
+		if v := c.Request.Header.Get(k); v != "" {
+			h[k] = v
+		}
+	}
+	// Also capture any x-cc-* or x-claude-* headers (CC metadata)
+	for k, vals := range c.Request.Header {
+		lk := strings.ToLower(k)
+		if (strings.HasPrefix(lk, "x-cc-") || strings.HasPrefix(lk, "x-claude-")) && len(vals) > 0 {
+			h[lk] = vals[0]
+		}
+	}
+	if len(h) == 0 {
+		return nil
+	}
+	return h
 }
 
 // requestLogCfgEnabled checks if request logging is enabled in the config.
@@ -100,9 +144,10 @@ func (s *OpenAIGatewayService) writeRequestLog(c *gin.Context, requestBody, resp
 	}
 
 	rec := requestLogRecord{
-		Ts:          time.Now().Unix(),
-		APIKeyID:    getAPIKeyIDFromContext(c),
-		RequestBody: json.RawMessage(requestBody),
+		Ts:             time.Now().Unix(),
+		APIKeyID:       getAPIKeyIDFromContext(c),
+		RequestHeaders: extractRequestHeaders(c),
+		RequestBody:    json.RawMessage(requestBody),
 	}
 	if len(responseData) > 0 {
 		rec.ResponseComplete = json.RawMessage(responseData)
@@ -118,10 +163,11 @@ func (s *OpenAIGatewayService) writeRequestLogNonStreaming(c *gin.Context, reque
 
 	resp := json.RawMessage(responseBody)
 	rec := requestLogRecord{
-		Ts:           time.Now().Unix(),
-		APIKeyID:     getAPIKeyIDFromContext(c),
-		RequestBody:  json.RawMessage(requestBody),
-		ResponseBody: &resp,
+		Ts:             time.Now().Unix(),
+		APIKeyID:       getAPIKeyIDFromContext(c),
+		RequestHeaders: extractRequestHeaders(c),
+		RequestBody:    json.RawMessage(requestBody),
+		ResponseBody:   &resp,
 	}
 
 	writeRequestLogRecord(c, s.cfg, rec)
@@ -145,9 +191,10 @@ func (s *GatewayService) writeAnthropicRequestLog(c *gin.Context, requestBody, r
 	}
 
 	rec := requestLogRecord{
-		Ts:          time.Now().Unix(),
-		APIKeyID:    getAPIKeyIDFromContext(c),
-		RequestBody: json.RawMessage(requestBody),
+		Ts:             time.Now().Unix(),
+		APIKeyID:       getAPIKeyIDFromContext(c),
+		RequestHeaders: extractRequestHeaders(c),
+		RequestBody:    json.RawMessage(requestBody),
 	}
 	if len(responseData) > 0 {
 		rec.ResponseComplete = json.RawMessage(responseData)
@@ -164,10 +211,11 @@ func (s *GatewayService) writeAnthropicRequestLogNonStreaming(c *gin.Context, re
 
 	resp := json.RawMessage(responseBody)
 	rec := requestLogRecord{
-		Ts:           time.Now().Unix(),
-		APIKeyID:     getAPIKeyIDFromContext(c),
-		RequestBody:  json.RawMessage(requestBody),
-		ResponseBody: &resp,
+		Ts:             time.Now().Unix(),
+		APIKeyID:       getAPIKeyIDFromContext(c),
+		RequestHeaders: extractRequestHeaders(c),
+		RequestBody:    json.RawMessage(requestBody),
+		ResponseBody:   &resp,
 	}
 
 	writeRequestLogRecord(c, s.cfg, rec)
