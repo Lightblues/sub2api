@@ -28,41 +28,26 @@ type requestLogRecord struct {
 	ResponseBody     *json.RawMessage `json:"response_body,omitempty"`
 }
 
-// headersForLog are the request headers worth preserving in the request log.
-// Excludes auth tokens (x-api-key, authorization) for security.
-var headersForLog = []string{
-	"user-agent",
-	"anthropic-version",
-	"anthropic-beta",
-	"x-stainless-lang",
-	"x-stainless-package-version",
-	"x-stainless-os",
-	"x-stainless-arch",
-	"x-stainless-runtime",
-	"x-stainless-runtime-version",
-	"x-stainless-helper-method",
-	"content-type",
-	"accept",
-	"x-app",
+// headersExcludeFromLog are headers that must NOT be logged (sensitive auth data).
+var headersExcludeFromLog = map[string]bool{
+	"x-api-key":     true,
+	"authorization":  true,
+	"cookie":         true,
+	"set-cookie":     true,
 }
 
-// extractRequestHeaders picks relevant headers from the gin context for logging.
+// extractRequestHeaders captures all request headers except sensitive auth ones.
 func extractRequestHeaders(c *gin.Context) map[string]string {
 	if c == nil || c.Request == nil {
 		return nil
 	}
-	h := make(map[string]string, len(headersForLog))
-	for _, k := range headersForLog {
-		if v := c.Request.Header.Get(k); v != "" {
-			h[k] = v
-		}
-	}
-	// Also capture any x-cc-* or x-claude-* headers (CC metadata)
+	h := make(map[string]string, len(c.Request.Header))
 	for k, vals := range c.Request.Header {
 		lk := strings.ToLower(k)
-		if (strings.HasPrefix(lk, "x-cc-") || strings.HasPrefix(lk, "x-claude-")) && len(vals) > 0 {
-			h[lk] = vals[0]
+		if headersExcludeFromLog[lk] || len(vals) == 0 {
+			continue
 		}
+		h[lk] = vals[0]
 	}
 	if len(h) == 0 {
 		return nil
