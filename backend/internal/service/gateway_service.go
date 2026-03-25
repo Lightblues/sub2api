@@ -4802,7 +4802,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		clientDisconnect = streamResult.clientDisconnect
 		// request_log: write Anthropic passthrough streaming response log
 		if s.shouldLogRequest(c) && streamResult.finalResponseLog != nil {
-			go s.writeAnthropicRequestLog(c, body, streamResult.finalResponseLog)
+			go s.writeAnthropicRequestLog(c, input.Body, streamResult.finalResponseLog)
 		}
 	} else {
 		var respBody []byte
@@ -4812,7 +4812,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		}
 		// request_log: write Anthropic passthrough non-streaming response log
 		if s.shouldLogRequest(c) && len(respBody) > 0 {
-			go s.writeAnthropicRequestLogNonStreaming(c, body, respBody)
+			go s.writeAnthropicRequestLogNonStreaming(c, input.Body, respBody)
 		}
 	}
 	if usage == nil {
