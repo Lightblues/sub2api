@@ -122,9 +122,11 @@ type AdminGroup struct {
 	DefaultMappedModel string `json:"default_mapped_model"`
 
 	// 支持的模型系列（仅 antigravity 平台使用）
-	SupportedModelScopes []string       `json:"supported_model_scopes"`
-	AccountGroups        []AccountGroup `json:"account_groups,omitempty"`
-	AccountCount         int64          `json:"account_count,omitempty"`
+	SupportedModelScopes    []string       `json:"supported_model_scopes"`
+	AccountGroups           []AccountGroup `json:"account_groups,omitempty"`
+	AccountCount            int64          `json:"account_count,omitempty"`
+	ActiveAccountCount      int64          `json:"active_account_count,omitempty"`
+	RateLimitedAccountCount int64          `json:"rate_limited_account_count,omitempty"`
 
 	// 分组排序
 	SortOrder int `json:"sort_order"`
@@ -390,6 +392,10 @@ type UsageLog struct {
 // AdminUsageLog 是管理员接口使用的 usage log DTO（包含管理员字段）。
 type AdminUsageLog struct {
 	UsageLog
+
+	// UpstreamModel is the actual model sent to the upstream provider after mapping.
+	// Omitted when no mapping was applied (requested model was used as-is).
+	UpstreamModel *string `json:"upstream_model,omitempty"`
 
 	// AccountRateMultiplier 账号计费倍率快照（nil 表示按 1.0 处理）
 	AccountRateMultiplier *float64 `json:"account_rate_multiplier"`

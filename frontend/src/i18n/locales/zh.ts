@@ -218,7 +218,7 @@ export default {
       email: '邮箱',
       password: '密码',
       confirmPassword: '确认密码',
-      passwordPlaceholder: '至少 6 个字符',
+      passwordPlaceholder: '至少 8 个字符',
       confirmPasswordPlaceholder: '确认密码',
       passwordMismatch: '密码不匹配'
     },
@@ -533,6 +533,14 @@ export default {
     title: 'API 密钥',
     description: '管理您的 API 密钥和访问令牌',
     searchPlaceholder: '搜索名称或Key...',
+    endpoints: {
+      title: 'API 端点',
+      default: '默认',
+      copied: '已复制',
+      copiedHint: '已复制到剪贴板',
+      clickToCopy: '点击可复制此端点',
+      speedTest: '测速',
+    },
     allGroups: '全部分组',
     allStatus: '全部状态',
     createKey: '创建密钥',
@@ -574,7 +582,7 @@ export default {
     groupRequired: '请选择分组',
     usage: '用量',
     today: '今日',
-    total: '累计',
+    total: '近30天',
     quota: '额度',
     lastUsedAt: '上次使用时间',
     useKey: '使用密钥',
@@ -723,11 +731,14 @@ export default {
     exporting: '导出中...',
     preparingExport: '正在准备导出...',
     model: '模型',
+    requestedModel: '请求',
+    upstreamModel: '上游',
     reasoningEffort: '推理强度',
     endpoint: '端点',
     endpointDistribution: '端点分布',
     inbound: '入站',
     upstream: '上游',
+    mapping: '映射',
     path: '路径',
     inboundEndpoint: '入站端点',
     upstreamEndpoint: '上游端点',
@@ -925,6 +936,7 @@ export default {
     lastWeek: '上周',
     thisMonth: '本月',
     lastMonth: '上月',
+    last24Hours: '近24小时',
     last7Days: '近 7 天',
     last14Days: '近 14 天',
     last30Days: '近 30 天',
@@ -1047,7 +1059,12 @@ export default {
         createBackup: '创建备份',
         backing: '备份中...',
         backupCreated: '备份创建成功',
-        expireDays: '过期天数'
+        expireDays: '过期天数',
+        alreadyInProgress: '已有备份正在进行中',
+        backupRunning: '备份进行中...',
+        backupFailed: '备份失败',
+        restoreRunning: '恢复进行中...',
+        restoreFailed: '恢复失败',
       },
       columns: {
         status: '状态',
@@ -1063,6 +1080,11 @@ export default {
         running: '执行中',
         completed: '已完成',
         failed: '失败'
+      },
+      progress: {
+        pending: '准备中',
+        dumping: '导出数据库',
+        uploading: '上传中',
       },
       trigger: {
         manual: '手动',
@@ -1300,6 +1322,9 @@ export default {
       roleFilter: '角色筛选',
       allRoles: '全部角色',
       allStatus: '全部状态',
+      allGroups: '全部分组',
+      searchGroups: '搜索分组...',
+      fuzzySearch: '模糊搜索',
       statusFilter: '状态筛选',
       allStatuses: '全部状态',
       admin: '管理员',
@@ -1326,6 +1351,7 @@ export default {
         username: '用户名',
         notes: '备注',
         role: '角色',
+        groups: '分组',
         subscriptions: '订阅分组',
         balance: '余额',
         usage: '用量',
@@ -1335,8 +1361,11 @@ export default {
         actions: '操作'
       },
       today: '今日',
-      total: '累计',
+      total: '近30天',
       noSubscription: '暂无订阅',
+      publicGroupCount: '+{count} 公开',
+      exclusiveLabel: '专属',
+      publicLabel: '公开',
       daysRemaining: '{days}天',
       expired: '已过期',
       disable: '禁用',
@@ -1428,6 +1457,14 @@ export default {
       useDefaultRate: '使用默认',
       customRatePlaceholder: '留空使用默认',
       groupConfigUpdated: '分组配置更新成功',
+      replaceGroup: '替换分组',
+      clickToReplace: '点击替换分组',
+      replaceGroupTitle: '替换专属分组',
+      replaceGroupHint: '选择新分组替换「{old}」，将自动迁移绑定的 Key 并更新分组权限',
+      replaceGroupConfirm: '确认替换',
+      replaceGroupSuccess: '分组替换成功，已迁移 {count} 个 Key',
+      selectNewGroup: '请选择目标分组',
+      noOtherGroups: '没有其他可用的专属分组',
       deposit: '充值',
       withdraw: '退款',
       depositAmount: '充值金额',
@@ -1550,6 +1587,8 @@ export default {
         priority: '优先级',
         apiKeys: 'API 密钥数',
         accounts: '账号数',
+        capacity: '容量',
+        usage: '用量',
         status: '状态',
         actions: '操作',
         billingType: '计费类型',
@@ -1558,6 +1597,12 @@ export default {
         userNotes: '备注',
         userStatus: '状态'
       },
+      usageToday: '今日',
+      usageTotal: '累计',
+      accountsAvailable: '可用:',
+      accountsRateLimited: '限流:',
+      accountsTotal: '总量:',
+      accountsUnit: '个账号',
       form: {
         name: '名称',
         description: '描述',
@@ -1763,6 +1808,7 @@ export default {
       revokeSubscription: '撤销订阅',
       allStatus: '全部状态',
       allGroups: '全部分组',
+      allPlatforms: '全部平台',
       daily: '每日',
       weekly: '每周',
       monthly: '每月',
@@ -1827,7 +1873,37 @@ export default {
       pleaseSelectUser: '请选择用户',
       pleaseSelectGroup: '请选择分组',
       validityDaysRequired: '请输入有效的天数（至少1天）',
-      revokeConfirm: "确定要撤销 '{user}' 的订阅吗？此操作无法撤销。"
+      revokeConfirm: "确定要撤销 '{user}' 的订阅吗？此操作无法撤销。",
+      guide: {
+        title: '订阅管理教程',
+        subtitle: '订阅模式允许你按时间周期为用户分配使用额度，支持日/周/月配额限制。按照以下步骤即可完成配置。',
+        showGuide: '使用指南',
+        step1: {
+          title: '创建订阅分组',
+          line1: '前往「分组管理」页面，点击「创建分组」',
+          line2: '将计费类型设为「订阅」，配置日/周/月额度限制',
+          line3: '保存分组，确保状态为「正常」',
+          link: '前往分组管理'
+        },
+        step2: {
+          title: '分配订阅给用户',
+          line1: '点击本页右上角「分配订阅」按钮',
+          line2: '在弹窗中搜索用户邮箱并选择目标用户',
+          line3: '选择订阅分组、设置有效期天数，点击「分配」'
+        },
+        step3: {
+          title: '管理已有订阅'
+        },
+        actions: {
+          adjust: '调整',
+          adjustDesc: '延长或缩短订阅有效期',
+          resetQuota: '重置配额',
+          resetQuotaDesc: '将日/周/月用量归零，重新开始计算',
+          revoke: '撤销',
+          revokeDesc: '立即终止该用户的订阅，不可恢复'
+        },
+        tip: '提示：订阅分组下拉列表中只会显示计费类型为「订阅」且状态为「正常」的分组。如果没有可选项，请先到分组管理中创建。'
+      }
     },
 
     // Accounts Management
@@ -1912,6 +1988,7 @@ export default {
       allTypes: '全部类型',
       allStatus: '全部状态',
       allGroups: '全部分组',
+      ungroupedGroup: '未分配分组',
       oauthType: 'OAuth',
       // Schedulable toggle
       schedulable: '参与调度',
@@ -1940,6 +2017,8 @@ export default {
         expiresAt: '过期时间',
         actions: '操作'
       },
+      allPrivacyModes: '全部Privacy状态',
+      privacyUnset: '未设置',
       privacyTrainingOff: '已关闭训练数据共享',
       privacyCfBlocked: '被 Cloudflare 拦截，训练可能仍开启',
       privacyFailed: '关闭训练数据共享失败',
@@ -2110,7 +2189,9 @@ export default {
         gemini3Pro: 'G3P',
         gemini3Flash: 'G3F',
         gemini3Image: 'G31FI',
-        claude: 'Claude'
+        claude: 'Claude',
+        passiveSampled: '被动采样',
+        activeQuery: '查询'
       },
       tier: {
         free: 'Free',
@@ -3580,7 +3661,12 @@ export default {
         typeRequest: '请求',
         typeAuth: '认证',
         typeRouting: '路由',
-        typeInternal: '内部'
+        typeInternal: '内部',
+        endpoint: '端点',
+        requestType: '类型',
+        requestTypeSync: '同步',
+        requestTypeStream: '流式',
+        requestTypeWs: 'WS'
       },
       // Error Details Modal
       errorDetails: {
@@ -3666,6 +3752,16 @@ export default {
         latency: '请求时长',
         businessLimited: '业务限制',
         requestPath: '请求路径',
+        inboundEndpoint: '入站端点',
+        upstreamEndpoint: '上游端点',
+        requestedModel: '请求模型',
+        upstreamModel: '上游模型',
+        requestType: '请求类型',
+        requestTypeUnknown: '未知',
+        requestTypeSync: '同步',
+        requestTypeStream: '流式',
+        requestTypeWs: 'WebSocket',
+        modelMapping: '模型映射',
         timings: '时序信息',
         auth: '认证',
         routing: '路由',
@@ -4227,7 +4323,10 @@ export default {
         description: '控制 Claude Code 客户端访问要求',
         minVersion: '最低版本号',
         minVersionPlaceholder: '例如 2.1.63',
-        minVersionHint: '拒绝低于此版本的 Claude Code 客户端请求（semver 格式）。留空则不检查版本。'
+        minVersionHint: '拒绝低于此版本的 Claude Code 客户端请求（semver 格式）。留空则不检查版本。',
+        maxVersion: '最高版本号',
+        maxVersionPlaceholder: '例如 2.5.0',
+        maxVersionHint: '拒绝高于此版本的 Claude Code 客户端请求（semver 格式）。留空则不限制最高版本。'
       },
       scheduling: {
         title: '网关调度设置',
@@ -4250,6 +4349,18 @@ export default {
         apiBaseUrl: 'API 端点地址',
         apiBaseUrlHint: '用于"使用密钥"和"导入到 CC Switch"功能，留空则使用当前站点地址',
         apiBaseUrlPlaceholder: 'https://api.example.com',
+        customEndpoints: {
+          title: '自定义端点',
+          description: '添加额外的 API 端点地址，用户可在「API Keys」页面快速复制',
+          itemLabel: '端点 #{n}',
+          name: '名称',
+          namePlaceholder: '如：OpenAI Compatible',
+          endpointUrl: '端点地址',
+          endpointUrlPlaceholder: 'https://api2.example.com',
+          descriptionLabel: '介绍',
+          descriptionPlaceholder: '如：支持 OpenAI 格式请求',
+          add: '添加端点',
+        },
         contactInfo: '客服联系方式',
         contactInfoPlaceholder: '例如：QQ: 123456789',
         contactInfoHint: '填写客服联系方式，将展示在兑换页面、个人资料等位置',
@@ -4473,6 +4584,16 @@ export default {
           testSuccess: 'Google Drive 存储测试成功（上传、访问、删除均正常）',
           testFailed: 'Google Drive 存储测试失败'
         }
+      },
+      overloadCooldown: {
+        title: '529 过载冷却',
+        description: '配置上游返回 529（过载）时的账号调度暂停策略',
+        enabled: '启用过载冷却',
+        enabledHint: '收到 529 错误时暂停该账号的调度，冷却后自动恢复',
+        cooldownMinutes: '冷却时长（分钟）',
+        cooldownMinutesHint: '账号暂停调度的持续时间（1-120 分钟）',
+        saved: '过载冷却设置保存成功',
+        saveFailed: '保存过载冷却设置失败'
       },
       streamTimeout: {
         title: '流超时处理',

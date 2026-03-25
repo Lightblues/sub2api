@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from '../client'
-import type { CustomMenuItem } from '@/types'
+import type { CustomMenuItem, CustomEndpoint } from '@/types'
 
 export interface DefaultSubscriptionSetting {
   group_id: number
@@ -43,6 +43,7 @@ export interface SystemSettings {
   sora_client_enabled: boolean
   backend_mode_enabled: boolean
   custom_menu_items: CustomMenuItem[]
+  custom_endpoints: CustomEndpoint[]
   // SMTP settings
   smtp_host: string
   smtp_port: number
@@ -81,6 +82,7 @@ export interface SystemSettings {
 
   // Claude Code version check
   min_claude_code_version: string
+  max_claude_code_version: string
 
   // 分组隔离
   allow_ungrouped_key_scheduling: boolean
@@ -111,6 +113,7 @@ export interface UpdateSettingsRequest {
   sora_client_enabled?: boolean
   backend_mode_enabled?: boolean
   custom_menu_items?: CustomMenuItem[]
+  custom_endpoints?: CustomEndpoint[]
   smtp_host?: string
   smtp_port?: number
   smtp_username?: string
@@ -137,6 +140,7 @@ export interface UpdateSettingsRequest {
   ops_query_mode_default?: 'auto' | 'raw' | 'preagg' | string
   ops_metrics_interval_seconds?: number
   min_claude_code_version?: string
+  max_claude_code_version?: string
   allow_ungrouped_key_scheduling?: boolean
 }
 
@@ -241,6 +245,33 @@ export async function deleteAdminApiKey(): Promise<{ message: string }> {
   const { data } = await apiClient.delete<{ message: string }>('/admin/settings/admin-api-key')
   return data
 }
+
+// ==================== Overload Cooldown Settings ====================
+
+/**
+ * Overload cooldown settings interface (529 handling)
+ */
+export interface OverloadCooldownSettings {
+  enabled: boolean
+  cooldown_minutes: number
+}
+
+export async function getOverloadCooldownSettings(): Promise<OverloadCooldownSettings> {
+  const { data } = await apiClient.get<OverloadCooldownSettings>('/admin/settings/overload-cooldown')
+  return data
+}
+
+export async function updateOverloadCooldownSettings(
+  settings: OverloadCooldownSettings
+): Promise<OverloadCooldownSettings> {
+  const { data } = await apiClient.put<OverloadCooldownSettings>(
+    '/admin/settings/overload-cooldown',
+    settings
+  )
+  return data
+}
+
+// ==================== Stream Timeout Settings ====================
 
 /**
  * Stream timeout settings interface
@@ -499,6 +530,8 @@ export const settingsAPI = {
   getAdminApiKey,
   regenerateAdminApiKey,
   deleteAdminApiKey,
+  getOverloadCooldownSettings,
+  updateOverloadCooldownSettings,
   getStreamTimeoutSettings,
   updateStreamTimeoutSettings,
   getRectifierSettings,
