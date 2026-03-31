@@ -642,10 +642,11 @@ type GatewayUsageRecordConfig struct {
 	AutoScaleCooldownSeconds int `mapstructure:"auto_scale_cooldown_seconds"`
 }
 
-// GatewayRequestLogConfig 请求/响应日志配置（JSONL 文件）
+// GatewayRequestLogConfig 请求/响应日志配置（SQLite 数据库）
 type GatewayRequestLogConfig struct {
 	Enabled        bool     `mapstructure:"enabled"`
-	Dir            string   `mapstructure:"dir"`
+	Dir            string   `mapstructure:"dir"`     // base directory (kept for backward compat)
+	DbPath         string   `mapstructure:"db_path"` // SQLite DB path, default: {Dir}/request_log.db
 	Platforms      []string `mapstructure:"platforms"`
 	ExcludedGroups []string `mapstructure:"excluded_groups"`
 }
@@ -1345,9 +1346,10 @@ func setDefaults() {
 	viper.SetDefault("gateway.max_account_switches_gemini", 3)
 	viper.SetDefault("gateway.force_codex_cli", false)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
-	// RequestLog: 请求/响应 JSONL 日志（默认关闭）
+	// RequestLog: 请求/响应 SQLite 日志（默认关闭）
 	viper.SetDefault("gateway.request_log.enabled", false)
 	viper.SetDefault("gateway.request_log.dir", "data/request_logs")
+	viper.SetDefault("gateway.request_log.db_path", "") // default: {dir}/request_log.db
 	viper.SetDefault("gateway.request_log.platforms", []string{"openai"})
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)
