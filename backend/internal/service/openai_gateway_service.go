@@ -3080,7 +3080,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 // handlePassthroughSSEToJSON converts an SSE response body into a JSON
 // response for the passthrough path. It mirrors handleSSEToJSON but skips
 // model replacement (passthrough does not remap models).
-func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c *gin.Context, body []byte) (*OpenAIUsage, error) {
+func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c *gin.Context, body []byte) (*OpenAIUsage, []byte, error) {
 	bodyText := string(body)
 	finalResponse, ok := extractCodexFinalResponse(bodyText)
 
@@ -3108,7 +3108,7 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 			if msg == "" {
 				msg = "Upstream compact response failed"
 			}
-			return nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
+			return nil, nil, s.writeOpenAINonStreamingProtocolError(resp, c, msg)
 		}
 		usage = s.parseSSEUsageFromBody(bodyText)
 	}
@@ -3124,7 +3124,7 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 	}
 	c.Data(resp.StatusCode, contentType, body)
 
-	return usage, nil
+	return usage, body, nil
 }
 
 func writeOpenAIPassthroughResponseHeaders(dst http.Header, src http.Header, filter *responseheaders.CompiledHeaderFilter) {
