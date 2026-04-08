@@ -470,8 +470,10 @@ $env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
     "ANTHROPIC_BASE_URL": "${baseUrl}",
     "ANTHROPIC_AUTH_TOKEN": "${apiKey}",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0"
-  }
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+    "CLAUDE_CODE_EFFORT_LEVEL": "max"
+  },
+  "model": "claude-opus-4-6"
 }`
 
   return [
@@ -537,8 +539,10 @@ model_reasoning_effort = "xhigh"
 disable_response_storage = true
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
-model_context_window = 1000000
-model_auto_compact_token_limit = 900000
+model_context_window = 200000
+model_auto_compact_token_limit = 180000
+model_supports_reasoning_summaries = true
+model_reasoning_summary = "detailed"
 
 [model_providers.OpenAI]
 name = "OpenAI"
@@ -576,8 +580,10 @@ model_reasoning_effort = "xhigh"
 disable_response_storage = true
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
-model_context_window = 1000000
-model_auto_compact_token_limit = 900000
+model_context_window = 200000
+model_auto_compact_token_limit = 180000
+model_supports_reasoning_summaries = true
+model_reasoning_summary = "detailed"
 
 [model_providers.OpenAI]
 name = "OpenAI"
