@@ -3450,6 +3450,13 @@ func (s *GatewayService) GetAccessToken(ctx context.Context, account *Account) (
 			return "", "", errors.New("api_key not found in credentials")
 		}
 		return apiKey, "apikey", nil
+	case AccountTypeUpstream:
+		// Upstream 账号：通过 base_url + api_key 透传到上游（如 youtu-llm-proxy sidecar）
+		apiKey := account.GetCredential("api_key")
+		if apiKey == "" {
+			apiKey = "dummy" // upstream 代理可能不需要鉴权
+		}
+		return apiKey, "apikey", nil
 	case AccountTypeBedrock:
 		return "", "bedrock", nil // Bedrock 使用 SigV4 签名或 API Key，由 forwardBedrock 处理
 	default:
