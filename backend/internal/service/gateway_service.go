@@ -5566,7 +5566,7 @@ func (s *GatewayService) handleBedrockNonStreamingResponse(
 func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string, reqStream bool, mimicClaudeCode bool) (*http.Request, error) {
 	// 确定目标URL
 	targetURL := claudeAPIURL
-	if account.Type == AccountTypeAPIKey {
+	if account.Type == AccountTypeAPIKey || account.Type == AccountTypeUpstream {
 		baseURL := account.GetBaseURL()
 		if baseURL != "" {
 			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
