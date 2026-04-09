@@ -595,11 +595,14 @@ func (a *Account) ResolveMappedModel(requestedModel string) (mappedModel string,
 }
 
 func (a *Account) GetBaseURL() string {
-	if a.Type != AccountTypeAPIKey {
+	if a.Type != AccountTypeAPIKey && a.Type != AccountTypeUpstream {
 		return ""
 	}
 	baseURL := a.GetCredential("base_url")
 	if baseURL == "" {
+		if a.Type == AccountTypeUpstream {
+			return "" // upstream 账号必须显式配置 base_url
+		}
 		return "https://api.anthropic.com"
 	}
 	if a.Platform == PlatformAntigravity {
