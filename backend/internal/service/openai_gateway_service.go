@@ -2945,6 +2945,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	usage := &OpenAIUsage{}
 	var firstTokenMs *int
 	var completedEventData []byte
+	reqLogAcc := apicompat.NewBufferedResponseAccumulator()
 	clientDisconnected := false
 	sawDone := false
 	sawTerminalEvent := false
@@ -2975,6 +2976,12 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				firstTokenMs = &ms
 			}
 			s.parseSSEUsageBytes(dataBytes, usage)
+			if trimmedData != "[DONE]" && trimmedData != "" {
+				var event apicompat.ResponsesStreamEvent
+				if json.Unmarshal(dataBytes, &event) == nil {
+					reqLogAcc.ProcessEvent(&event)
+				}
+			}
 			if completedEventData == nil && len(dataBytes) >= 80 &&
 				bytes.Contains(dataBytes, []byte(`"response.completed"`)) &&
 				gjson.GetBytes(dataBytes, "type").String() == "response.completed" {
@@ -2992,6 +2999,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			}
 		}
 	}
+	completedEventData = patchCompletedEventDataOutput(completedEventData, reqLogAcc)
 	if err := scanner.Err(); err != nil {
 		if sawTerminalEvent {
 			return &openaiStreamingResultPassthrough{usage: usage, firstTokenMs: firstTokenMs, completedEventData: completedEventData}, nil
@@ -3574,6 +3582,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	usage := &OpenAIUsage{}
 	var firstTokenMs *int
 	var completedEventData []byte
+	reqLogAcc := apicompat.NewBufferedResponseAccumulator()
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
 	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
@@ -3641,6 +3650,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 
 	needModelReplace := originalModel != mappedModel
 	resultWithUsage := func() *openaiStreamingResult {
+		completedEventData = patchCompletedEventDataOutput(completedEventData, reqLogAcc)
 		return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMs, completedEventData: completedEventData}
 	}
 	finalizeStream := func() (*openaiStreamingResult, error) {
@@ -3731,6 +3741,12 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 				firstTokenMs = &ms
 			}
 			s.parseSSEUsageBytes(dataBytes, usage)
+			if data != "[DONE]" && data != "" {
+				var event apicompat.ResponsesStreamEvent
+				if json.Unmarshal(dataBytes, &event) == nil {
+					reqLogAcc.ProcessEvent(&event)
+				}
+			}
 			if completedEventData == nil && len(dataBytes) >= 80 &&
 				bytes.Contains(dataBytes, []byte(`"response.completed"`)) &&
 				gjson.GetBytes(dataBytes, "type").String() == "response.completed" {
@@ -4157,6 +4173,26 @@ func reconstructResponseOutputFromSSE(bodyText string) ([]byte, bool) {
 		return nil, false
 	}
 	return outputJSON, true
+}
+
+// patchCompletedEventDataOutput patches the completedEventData with reconstructed
+// output from the accumulator when the upstream response.completed event carries
+// an empty output array (upstream API behavior change ~2026-04-07).
+func patchCompletedEventDataOutput(data []byte, acc *apicompat.BufferedResponseAccumulator) []byte {
+	if len(data) == 0 || acc == nil || !acc.HasContent() {
+		return data
+	}
+	if len(gjson.GetBytes(data, "response.output").Array()) > 0 {
+		return data
+	}
+	outputJSON, err := json.Marshal(acc.BuildOutput())
+	if err != nil {
+		return data
+	}
+	if patched, err := sjson.SetRawBytes(data, "response.output", outputJSON); err == nil {
+		return patched
+	}
+	return data
 }
 
 func (s *OpenAIGatewayService) parseSSEUsageFromBody(body string) *OpenAIUsage {
