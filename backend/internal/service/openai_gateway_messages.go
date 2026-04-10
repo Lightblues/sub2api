@@ -258,6 +258,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	var finalResponse *apicompat.ResponsesResponse
 	var usage OpenAIUsage
 	var completedEventData []byte
+	reqLogAcc := apicompat.NewBufferedResponseAccumulator()
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -275,6 +276,8 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 			)
 			continue
 		}
+
+		reqLogAcc.ProcessEvent(&event)
 
 		// Terminal events carry the complete ResponsesResponse with output + usage.
 		if (event.Type == "response.completed" || event.Type == "response.incomplete" || event.Type == "response.failed") &&
@@ -294,6 +297,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 			}
 		}
 	}
+	completedEventData = patchCompletedEventDataOutput(completedEventData, reqLogAcc)
 
 	if err := scanner.Err(); err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
@@ -309,6 +313,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 		return nil, fmt.Errorf("upstream stream ended without terminal event")
 	}
 
+	reqLogAcc.SupplementResponseOutput(finalResponse)
 	anthropicResp := apicompat.ResponsesToAnthropic(finalResponse, originalModel)
 
 	if s.responseHeaderFilter != nil {
@@ -357,6 +362,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	var usage OpenAIUsage
 	var firstTokenMs *int
 	var completedEventData []byte
+	reqLogAcc := apicompat.NewBufferedResponseAccumulator()
 	firstChunk := true
 
 	scanner := bufio.NewScanner(resp.Body)
@@ -368,6 +374,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 
 	// resultWithUsage builds the final result snapshot.
 	resultWithUsage := func() *OpenAIForwardResult {
+		completedEventData = patchCompletedEventDataOutput(completedEventData, reqLogAcc)
 		return &OpenAIForwardResult{
 			RequestID:          requestID,
 			Usage:              usage,
@@ -398,6 +405,8 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			)
 			return false
 		}
+
+		reqLogAcc.ProcessEvent(&event)
 
 		// Extract usage and capture raw completed event data for request logging
 		if (event.Type == "response.completed" || event.Type == "response.incomplete" || event.Type == "response.failed") &&
