@@ -133,3 +133,7 @@ frontend/coverage/
 aicodex
 output/
 
+# misc
+# .ea/
+.tmp/
+frontend/package-lock.json
