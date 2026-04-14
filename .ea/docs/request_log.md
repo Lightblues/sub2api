@@ -126,6 +126,52 @@ CREATE TABLE records (
 | usage 统计 | 76/76 ✅ |
 | function_call arguments 合法 JSON | 169/169 ✅ |
 
+## 自动归档
+
+主 DB（`request_log.db`）只保留近 7 天数据，旧数据按天归档到 CephFS。
+
+### 归档存储
+
+| 项目 | 路径 |
+|------|------|
+| 主 DB（热数据） | `/data/docker/lib/volumes/sub2api_sub2api_data/_data/request_logs/request_log.db` |
+| 归档目录（冷数据） | `/apdcephfs/private_easonsshi/data/sub2api_archive/request_logs/` |
+| 归档脚本 | `/root/archive_request_logs.sh` |
+| Cron | `0 3 * * *`（每天凌晨 3 点） |
+
+### 归档格式
+
+每天一个独立 SQLite 文件，schema 和索引与主 DB 完全一致：
+
+```
+/apdcephfs/private_easonsshi/data/sub2api_archive/request_logs/
+  2026-03-13.db    (8 records)
+  2026-03-18.db    (5578 records)
+  2026-04-01.db    (14965 records)
+  ...
+```
+
+### 归档流程
+
+1. 识别主 DB 中超过 7 天的日期
+2. 为每个日期创建独立 SQLite 文件，通过 `ATTACH` 复制数据
+3. 验证行数一致后从主 DB 删除
+4. 全部完成后 `VACUUM` 回收空间
+
+### Inspector 读取归档
+
+`sub2api-inspector` 通过环境变量 `INSPECTOR_ARCHIVE_DIR` 配置归档目录。当某个日期在主 DB 中无数据时，自动打开归档目录中对应的 `.db` 文件（只读模式，连接缓存），对用户完全透明。
+
+### 手动运行归档
+
+```bash
+# 默认保留 7 天
+/root/archive_request_logs.sh
+
+# 自定义保留天数
+KEEP_DAYS=30 /root/archive_request_logs.sh
+```
+
 ## 已修复问题
 
 ### output 为空（2026-04-10 修复）

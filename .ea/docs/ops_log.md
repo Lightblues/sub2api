@@ -166,9 +166,7 @@
 - `/data`：98G 总计，32% 使用，64G 可用
 - SQLite 请求日志：**~21GB**（18GB 主库 + 2.6GB WAL），是最大增长来源
 
-**待办**：将 SQLite 日志迁移到 `/mnt/private/`（2TB ceph，当前用量 56G/2T）
-- PostgreSQL 留在 `/data`（ceph-fuse fsync 语义不可靠，不适合数据库）
-- 方案：修改 docker-compose.yml，将 `sub2api_data` volume bind mount 到 `/mnt/private/sub2api/data`
+**已解决**：2026-04-14 `/data` 扩容至 1TB + 请求日志自动归档到 CephFS，详见 [2026-04-14 运维日志](#2026-04-14磁盘满导致-redispg-故障--请求日志归档)
 
 ---
 
@@ -192,3 +190,41 @@ cd /root/sub2api && docker compose up -d sub2api
 - HTTPS 由 AIO-Forward 代理终止 TLS（DigiCert 通配证书 `*.devcloud.woa.com`）
 - Claude Code 使用 HTTPS 时可能遇到的问题：Node.js 不走系统代理、AIO-Forward 对长连接 SSE 流有超时/缓冲
 - **建议**：使用 `http://` 直连，绕过 AIO-Forward 的 TLS 层
+
+---
+
+## 2026-04-13：youtu_llm_proxy 卡死
+
+**现象**：youtu-claude 组所有请求返回 502，日志 `dial tcp 172.21.0.1:8088: connect: connection refused`
+
+**根因**：`youtu_llm_proxy.py` sidecar 进程卡死——进程还在但不再响应请求（最后日志停在 20:52）
+
+**修复**：kill 旧进程并重启 proxy
+
+**改进**：为 `youtu_llm_proxy` 和 `sub2api-inspector` 均配置了 systemd service（`Restart=always`），避免进程卡死后无人拉起
+
+---
+
+## 2026-04-14：磁盘满导致 Redis/PG 故障 + 请求日志归档
+
+**现象**：登录报 `Too many requests, please try again later`（429）
+
+**根因**：`/data` 分区（98G）100% 满
+- 请求日志 `request_log.db` 增长到 38GB（112K 条记录，1 个月数据）
+- Docker 旧镜像/build cache 占用约 48GB
+- Redis 无法写 RDB → rate limiter fail-close → 所有登录返回 429
+- Redis AOF 文件因写到一半磁盘满而损坏
+- PostgreSQL 也拒绝连接
+
+**修复**：
+1. 清理 Docker 垃圾镜像 + build cache（回收 ~42GB）
+2. `redis-check-aof --fix` 修复损坏的 AOF 文件
+3. 重启 Redis + sub2api
+4. 将 `/data` 盘扩容至 1TB（`resize2fs /dev/vdb`）
+
+**请求日志归档**（避免 SQLite 无限增长）：
+- 编写归档脚本 `/root/archive_request_logs.sh`，保留近 7 天，旧数据按天导出为独立 SQLite 到 CephFS
+- 一次性归档 18 天共 72964 条记录，VACUUM 回收 25GB
+- 配置 cron `0 3 * * *` 每天自动归档
+- 更新 `sub2api-inspector` 支持透明读取归档数据（`INSPECTOR_ARCHIVE_DIR` 环境变量）
+- 详见 [request_log.md](./request_log.md#自动归档)

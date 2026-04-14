@@ -31,10 +31,11 @@ Sub2API 是一个 AI API 网关，把多个 Claude / OpenAI / Gemini 订阅账�
 | 数据 | 实际路径（宿主机） | 大小（截至 2026-04） |
 |------|------------------|-------------------|
 | PostgreSQL（服务主数据库） | `/data/docker/lib/volumes/sub2api_sub2api_pg_data/_data/` | ~500 MB |
-| SQLite 请求日志 | `/data/docker/lib/volumes/sub2api_sub2api_data/_data/request_logs/` | ~21 GB（持续增长） |
+| SQLite 请求日志（近 7 天） | `/data/docker/lib/volumes/sub2api_sub2api_data/_data/request_logs/` | ~13 GB |
+| SQLite 请求日志（归档） | `/apdcephfs/private_easonsshi/data/sub2api_archive/request_logs/` | ~25 GB |
 | Redis | `/data/docker/lib/volumes/sub2api_sub2api_redis_data/_data/` | ~25 MB |
 
-> ⚠️ SQLite 日志体积大，是 `/data` 盘（98G）的主要增长来源。**待办**：迁移到 `/mnt/private/`（2TB ceph）。
+> `/data` 盘已扩容至 1TB。请求日志通过 cron 定期归档到 CephFS，详见 [request_log.md](./request_log.md#自动归档)。
 
 ### Youtu LLM Proxy（方案 C sidecar）
 
@@ -50,20 +51,20 @@ sub2api (Docker :80)  →  youtu_llm_proxy.py (宿主机 :8088)  →  内部 tRP
 
 **脚本位置：** `.ea/youtu_llm_proxy.py`（同步到服务器 `/root/youtu_llm_proxy.py`）
 
-**启动/重启 Proxy：**
+**进程管理：** systemd（`youtu-llm-proxy.service`），自动重启 + 开机自启
+
 ```bash
-ssh anydev_llmrouter
-# 复制最新脚本
-scp .ea/youtu_llm_proxy.py anydev_llmrouter:/root/youtu_llm_proxy.py
-
-# 重启
-pkill -f youtu_llm_proxy
-nohup python3 /root/youtu_llm_proxy.py --env /root/youtu_llm_proxy.env --host 0.0.0.0 \
-    >/root/youtu_llm_proxy.log 2>&1 </dev/null &
-
-# 检查
-curl http://127.0.0.1:8088/health
+# 状态/重启/日志
+systemctl status youtu-llm-proxy
+systemctl restart youtu-llm-proxy
 tail -f /root/youtu_llm_proxy.log
+
+# 更新脚本后重启
+scp .ea/youtu_llm_proxy.py anydev_llmrouter:/root/youtu_llm_proxy.py
+ssh anydev_llmrouter "systemctl restart youtu-llm-proxy"
+
+# 健康检查
+curl http://127.0.0.1:8088/health
 ```
 
 **sub2api 账号（Admin UI）：**
@@ -90,9 +91,18 @@ cd /root/sub2api && docker compose up -d sub2api
 
 ### 重启 Inspector
 
+**进程管理：** systemd（`sub2api-inspector.service`），自动重启 + 开机自启
+
+环境变量 `INSPECTOR_ARCHIVE_DIR` 指向 CephFS 归档目录，viewer 透明读取归档数据。
+
 ```bash
-ssh anydev_llmrouter
+# 状态/重启/日志
+systemctl status sub2api-inspector
+systemctl restart sub2api-inspector
+tail -f /root/sub2api_inspector.log
+
+# 更新代码后重启
 cd ~/ea-fork && git pull origin main
-pkill -f sub2api-inspector
-nohup .venv/bin/sub2api-inspector > /var/log/sub2api-inspector.log 2>&1 &
+uv pip install -e packages/sub2api-inspector/
+systemctl restart sub2api-inspector
 ```
