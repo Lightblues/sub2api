@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sub2API Log Viewer</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  .json-key { color: #7c3aed; }
+  .json-str { color: #059669; }
+  .json-num { color: #d97706; }
+  .json-bool { color: #dc2626; }
+  .json-null { color: #6b7280; }
+  .fade-in { animation: fadeIn 0.15s ease-in; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  pre.json-view { font-size: 12px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+  .row-hover:hover { background-color: #f0f9ff !important; cursor: pointer; }
+  #detail-panel { transition: width 0.2s; }
+  .toast {
+    position: fixed; bottom: 20px; right: 20px; z-index: 100;
+    padding: 8px 16px; border-radius: 6px; font-size: 14px;
+    background: #065f46; color: white; opacity: 0; transition: opacity 0.3s;
+  }
+  .toast.show { opacity: 1; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 9999px; font-size: 11px; font-weight: 500; }
+  .badge-codex { background: #dbeafe; color: #1e40af; }
+  .badge-cc { background: #fce7f3; color: #9d174d; }
+  .badge-model { background: #f3f4f6; color: #374151; }
+  .stat-card { background: white; border-radius: 8px; padding: 16px; border: 1px solid #e5e7eb; }
+  .stat-value { font-size: 24px; font-weight: 700; color: #111827; }
+  .stat-label { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
+</style>
+</head>
+<body class="h-full bg-gray-50 text-gray-800 text-sm">
+
+<!-- Toast -->
+<div id="toast" class="toast"></div>
+
+<!-- Header -->
+<header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+    <h1 class="text-lg font-bold text-gray-900">Sub2API Log Viewer</h1>
+    <select id="date-select" class="border border-gray-300 rounded-md px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+      <option value="">Select date...</option>
+    </select>
+    <button onclick="loadStats()" class="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">Load</button>
+  </div>
+  <div class="flex items-center gap-2 text-xs text-gray-500">
+    <span id="status-text">Ready</span>
+  </div>
+</header>
+
+<!-- Main layout -->
+<div class="flex h-[calc(100vh-53px)]">
+
+  <!-- Left: list + filters -->
+  <div id="list-panel" class="flex-1 flex flex-col min-w-0 overflow-hidden">
+
+    <!-- Stats bar -->
+    <div id="stats-bar" class="hidden px-4 py-3 bg-white border-b border-gray-200">
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div class="stat-card"><div class="stat-label">Requests</div><div class="stat-value" id="stat-total">-</div></div>
+        <div class="stat-card"><div class="stat-label">Input Tokens</div><div class="stat-value" id="stat-input">-</div></div>
+        <div class="stat-card"><div class="stat-label">Output Tokens</div><div class="stat-value" id="stat-output">-</div></div>
+        <div class="stat-card"><div class="stat-label">Cached</div><div class="stat-value" id="stat-cached">-</div></div>
+        <div class="stat-card"><div class="stat-label">Sessions</div><div class="stat-value" id="stat-sessions">-</div></div>
+      </div>
+      <!-- Model & Key breakdown -->
+      <div class="flex gap-4 mt-2 text-xs text-gray-600" id="stats-detail"></div>
+    </div>
+
+    <!-- Filters -->
+    <div class="px-4 py-2 bg-white border-b border-gray-200 flex flex-wrap items-center gap-2">
+      <input id="f-session" type="text" placeholder="Session ID" class="border border-gray-300 rounded px-2 py-1 w-56 text-xs font-mono">
+      <select id="f-key" class="border border-gray-300 rounded px-2 py-1 text-xs">
+        <option value="">All Keys</option>
+      </select>
+      <select id="f-model" class="border border-gray-300 rounded px-2 py-1 text-xs">
+        <option value="">All Models</option>
+      </select>
+      <input id="f-q" type="text" placeholder="Full-text search..." class="border border-gray-300 rounded px-2 py-1 w-40 text-xs">
+      <button onclick="applyFilters()" class="px-3 py-1 bg-gray-700 text-white rounded text-xs hover:bg-gray-800">Filter</button>
+      <button onclick="clearFilters()" class="px-2 py-1 text-gray-500 hover:text-gray-700 text-xs">Clear</button>
+      <!-- Key lookup -->
+      <span class="text-gray-300">|</span>
+      <div class="relative">
+        <input id="sk-input" type="text" placeholder="sk-... lookup" class="border border-gray-300 rounded px-2 py-1 w-44 text-xs font-mono">
+        <div id="sk-result" class="hidden absolute top-8 left-0 z-50 bg-white border border-gray-200 rounded-md shadow-lg p-2 text-xs min-w-[220px]"></div>
+      </div>
+      <button onclick="lookupKey()" class="px-2 py-1 bg-amber-600 text-white rounded text-xs hover:bg-amber-700">Lookup</button>
+      <div class="flex-1"></div>
+      <span id="match-count" class="text-xs text-gray-500"></span>
+      <button onclick="exportFiltered()" class="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700">Export JSONL</button>
+    </div>
+
+    <!-- Sessions quick-filter (populated from stats) -->
+    <div id="sessions-bar" class="hidden px-4 py-1.5 bg-gray-50 border-b border-gray-200 flex flex-wrap gap-1.5 max-h-24 overflow-y-auto"></div>
+
+    <!-- Table -->
+    <div class="flex-1 overflow-auto">
+      <table class="w-full text-xs">
+        <thead class="bg-gray-100 sticky top-0">
+          <tr class="text-left text-gray-500">
+            <th class="px-3 py-2 w-8">#</th>
+            <th class="px-3 py-2 w-20">Time</th>
+            <th class="px-3 py-2 w-16">Key</th>
+            <th class="px-3 py-2">Model</th>
+            <th class="px-3 py-2">Session</th>
+            <th class="px-3 py-2 w-20 text-right">In</th>
+            <th class="px-3 py-2 w-20 text-right">Out</th>
+            <th class="px-3 py-2 w-20 text-right">Cache</th>
+            <th class="px-3 py-2 w-16">Status</th>
+          </tr>
+        </thead>
+        <tbody id="log-table"></tbody>
+      </table>
+      <div id="table-empty" class="hidden text-center py-12 text-gray-400">
+        Select a date and click Load to start
+      </div>
+      <!-- Pagination -->
+      <div id="pagination" class="hidden px-4 py-2 border-t border-gray-200 bg-white flex items-center justify-between">
+        <button onclick="prevPage()" id="btn-prev" class="px-3 py-1 border rounded text-xs hover:bg-gray-50 disabled:opacity-30" disabled>Previous</button>
+        <span id="page-info" class="text-xs text-gray-500"></span>
+        <button onclick="nextPage()" id="btn-next" class="px-3 py-1 border rounded text-xs hover:bg-gray-50 disabled:opacity-30" disabled>Next</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: detail panel -->
+  <div id="detail-panel" class="hidden w-[50%] border-l border-gray-200 bg-white flex flex-col overflow-hidden">
+    <div class="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+      <span class="font-semibold text-xs text-gray-700">Request Detail</span>
+      <div class="flex gap-2">
+        <button onclick="copyDetail()" class="px-2 py-1 text-xs bg-blue-50 text-blue-700 rounded hover:bg-blue-100">Copy JSON</button>
+        <button onclick="closeDetail()" class="px-2 py-1 text-xs text-gray-500 hover:text-gray-700">Close &times;</button>
+      </div>
+    </div>
+    <!-- Detail tabs -->
+    <div class="px-4 py-1.5 border-b border-gray-200 flex gap-1">
+      <button onclick="showTab('full')" class="tab-btn px-2 py-1 rounded text-xs" data-tab="full">Full JSON</button>
+      <button onclick="showTab('headers')" class="tab-btn px-2 py-1 rounded text-xs" data-tab="headers">Headers</button>
+      <button onclick="showTab('body')" class="tab-btn px-2 py-1 rounded text-xs" data-tab="body">Request Body</button>
+      <button onclick="showTab('response')" class="tab-btn px-2 py-1 rounded text-xs" data-tab="response">Response</button>
+    </div>
+    <div id="detail-content" class="flex-1 overflow-auto p-4">
+      <pre class="json-view" id="detail-json"></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+// --- State ---
+let currentDate = '';
+let currentStats = null;
+let currentData = [];
+let currentRecord = null;
+let currentTab = 'full';
+let offset = 0;
+const LIMIT = 100;
+let totalMatched = 0;
+
+// --- API ---
+const API = '';  // same origin
+
+async function api(path) {
+  const res = await fetch(API + path);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
+}
+
+// --- Init ---
+async function init() {
+  const { dates } = await api('/api/dates');
+  const sel = document.getElementById('date-select');
+  dates.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.date;
+    opt.textContent = `${d.date} (${fmtNum(d.records)} reqs)`;
+    sel.appendChild(opt);
+  });
+  if (dates.length > 0) {
+    sel.value = dates[0].date;
+  }
+  document.getElementById('table-empty').classList.remove('hidden');
+}
+
+// --- Load stats ---
+async function loadStats() {
+  const date = document.getElementById('date-select').value;
+  if (!date) return;
+  currentDate = date;
+  setStatus('Loading stats...');
+  try {
+    currentStats = await api(`/api/logs/${date}/stats`);
+    renderStats(currentStats);
+    // Populate filter dropdowns
+    populateFilters(currentStats);
+    // Load first page
+    offset = 0;
+    await loadLogs();
+    setStatus('Ready');
+  } catch (e) {
+    setStatus('Error: ' + e.message);
+  }
+}
+
+function renderStats(s) {
+  document.getElementById('stats-bar').classList.remove('hidden');
+  document.getElementById('stat-total').textContent = fmtNum(s.total_requests);
+  document.getElementById('stat-input').textContent = fmtTokens(s.tokens.total_input);
+  document.getElementById('stat-output').textContent = fmtTokens(s.tokens.total_output);
+  document.getElementById('stat-cached').textContent = fmtTokens(s.tokens.total_cached);
+  document.getElementById('stat-sessions').textContent = s.sessions.length;
+
+  // Detail: models & keys
+  let detail = '';
+  detail += '<div><b>Models:</b> ' + Object.entries(s.by_model).map(([m,c]) => `${m}(${c})`).join(', ') + '</div>';
+  detail += '<div><b>Keys:</b> ' + Object.entries(s.by_api_key_id).map(([k,c]) => `${keyName(k)}(${c})`).join(', ') + '</div>';
+  document.getElementById('stats-detail').innerHTML = detail;
+
+  // Sessions quick-filter bar
+  const bar = document.getElementById('sessions-bar');
+  if (s.sessions.length > 0) {
+    bar.classList.remove('hidden');
+    bar.innerHTML = s.sessions.map(ses => {
+      const cls = ses.type === 'codex' ? 'badge-codex' : 'badge-cc';
+      return `<button class="badge ${cls} hover:opacity-80" onclick="quickFilterSession('${ses.id}')">${ses.type}:${ses.id.substring(0,8)}... (${ses.count})</button>`;
+    }).join('');
+  } else {
+    bar.classList.add('hidden');
+  }
+}
+
+function populateFilters(s) {
+  const keySelect = document.getElementById('f-key');
+  keySelect.innerHTML = '<option value="">All Keys</option>';
+  Object.keys(s.by_api_key_id).forEach(k => {
+    keySelect.innerHTML += `<option value="${k}">${keyName(k)} (${s.by_api_key_id[k]})</option>`;
+  });
+  const modelSelect = document.getElementById('f-model');
+  modelSelect.innerHTML = '<option value="">All Models</option>';
+  Object.keys(s.by_model).forEach(m => {
+    modelSelect.innerHTML += `<option value="${m}">${m} (${s.by_model[m]})</option>`;
+  });
+}
+
+// --- Load logs ---
+async function loadLogs() {
+  if (!currentDate) return;
+  setStatus('Loading logs...');
+  const params = buildFilterParams();
+  params.append('offset', offset);
+  params.append('limit', LIMIT);
+  try {
+    const res = await api(`/api/logs/${currentDate}?${params}`);
+    currentData = res.data;
+    totalMatched = res.total_matched;
+    renderTable(currentData);
+    renderPagination();
+    document.getElementById('match-count').textContent = `${totalMatched} matched`;
+    setStatus('Ready');
+  } catch (e) {
+    setStatus('Error: ' + e.message);
+  }
+}
+
+function buildFilterParams() {
+  const p = new URLSearchParams();
+  const sid = document.getElementById('f-session').value.trim();
+  if (sid) p.append('session_id', sid);
+  const key = document.getElementById('f-key').value;
+  if (key) p.append('api_key_id', key);
+  const model = document.getElementById('f-model').value;
+  if (model) p.append('model', model);
+  const q = document.getElementById('f-q').value.trim();
+  if (q) p.append('q', q);
+  return p;
+}
+
+function applyFilters() {
+  offset = 0;
+  loadLogs();
+}
+
+function clearFilters() {
+  document.getElementById('f-session').value = '';
+  document.getElementById('f-key').value = '';
+  document.getElementById('f-model').value = '';
+  document.getElementById('f-q').value = '';
+  applyFilters();
+}
+
+function quickFilterSession(id) {
+  document.getElementById('f-session').value = id;
+  applyFilters();
+}
+
+// --- Render table ---
+function renderTable(data) {
+  const tbody = document.getElementById('log-table');
+  const empty = document.getElementById('table-empty');
+  if (data.length === 0) {
+    tbody.innerHTML = '';
+    empty.textContent = 'No matching records';
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+  tbody.innerHTML = data.map((r, i) => {
+    const idx = offset + i;
+    const recordId = r.id;  // database primary key
+    const sessionBadge = r.session
+      ? `<span class="badge ${r.session.type === 'codex' ? 'badge-codex' : 'badge-cc'}">${r.session.type}:${r.session.id.substring(0,8)}</span>`
+      : '<span class="text-gray-300">-</span>';
+    const statusCls = r.status === 'completed' ? 'text-green-600' : 'text-red-500';
+    return `<tr class="row-hover border-b border-gray-100 ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}" onclick="loadDetail(${recordId})">
+      <td class="px-3 py-1.5 text-gray-400">${idx}</td>
+      <td class="px-3 py-1.5 font-mono">${r.time || '-'}</td>
+      <td class="px-3 py-1.5" title="Key ID: ${r.api_key_id}">${keyName(r.api_key_id)}</td>
+      <td class="px-3 py-1.5"><span class="badge badge-model">${r.model || '-'}</span></td>
+      <td class="px-3 py-1.5">${sessionBadge}</td>
+      <td class="px-3 py-1.5 text-right font-mono">${fmtNum(r.input_tokens)}</td>
+      <td class="px-3 py-1.5 text-right font-mono">${fmtNum(r.output_tokens)}</td>
+      <td class="px-3 py-1.5 text-right font-mono text-blue-600">${fmtNum(r.cached_tokens)}</td>
+      <td class="px-3 py-1.5 ${statusCls}">${r.status || '-'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// --- Pagination ---
+function renderPagination() {
+  const pag = document.getElementById('pagination');
+  if (totalMatched <= LIMIT) { pag.classList.add('hidden'); return; }
+  pag.classList.remove('hidden');
+  document.getElementById('btn-prev').disabled = offset === 0;
+  document.getElementById('btn-next').disabled = offset + LIMIT >= totalMatched;
+  document.getElementById('page-info').textContent =
+    `${offset + 1}-${Math.min(offset + LIMIT, totalMatched)} of ${totalMatched}`;
+}
+function prevPage() { offset = Math.max(0, offset - LIMIT); loadLogs(); }
+function nextPage() { offset += LIMIT; loadLogs(); }
+
+// --- Detail ---
+async function loadDetail(recordId) {
+  setStatus('Loading detail...');
+  try {
+    const res = await api(`/api/logs/${currentDate}/record/${recordId}`);
+    currentRecord = res.record;
+    showTab(currentTab);
+    document.getElementById('detail-panel').classList.remove('hidden');
+    setStatus('Ready');
+  } catch (e) {
+    setStatus('Error: ' + e.message);
+  }
+}
+
+function showTab(tab) {
+  currentTab = tab;
+  let data;
+  if (tab === 'full') data = currentRecord;
+  else if (tab === 'headers') data = currentRecord?.request_headers;
+  else if (tab === 'body') data = currentRecord?.request_body;
+  else if (tab === 'response') data = currentRecord?.response_complete;
+  document.getElementById('detail-json').innerHTML = syntaxHighlight(JSON.stringify(data, null, 2));
+  // Update tab buttons
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.toggle('bg-blue-100', btn.dataset.tab === tab);
+    btn.classList.toggle('text-blue-700', btn.dataset.tab === tab);
+    btn.classList.toggle('text-gray-500', btn.dataset.tab !== tab);
+  });
+}
+
+function closeDetail() {
+  document.getElementById('detail-panel').classList.add('hidden');
+  currentRecord = null;
+}
+
+function copyDetail() {
+  let data;
+  if (currentTab === 'full') data = currentRecord;
+  else if (currentTab === 'headers') data = currentRecord?.request_headers;
+  else if (currentTab === 'body') data = currentRecord?.request_body;
+  else if (currentTab === 'response') data = currentRecord?.response_complete;
+  navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+  toast('Copied to clipboard!');
+}
+
+// --- Key lookup ---
+let keyMap = {};  // id -> {name, key_prefix}
+
+async function loadKeyMap() {
+  try {
+    const { keys } = await api('/api/keys');
+    keys.forEach(k => { keyMap[k.id] = { name: k.name, key_prefix: k.key_prefix }; });
+  } catch (e) {
+    // DB not available, silently skip
+  }
+}
+
+async function lookupKey() {
+  const sk = document.getElementById('sk-input').value.trim();
+  if (!sk) return;
+  const resultDiv = document.getElementById('sk-result');
+  resultDiv.classList.remove('hidden');
+  resultDiv.innerHTML = '<span class="text-gray-400">Looking up...</span>';
+  try {
+    const res = await api(`/api/keys/lookup?sk=${encodeURIComponent(sk)}`);
+    if (res.matches.length === 0) {
+      resultDiv.innerHTML = '<span class="text-red-500">No matching key found</span>';
+    } else {
+      resultDiv.innerHTML = res.matches.map(k =>
+        `<div class="py-1 flex items-center gap-2">
+          <span class="font-mono font-bold text-blue-700">ID:${k.id}</span>
+          <span class="text-gray-700">${k.name}</span>
+          <button class="text-blue-500 hover:underline" onclick="applyKeyFilter(${k.id})">filter</button>
+        </div>`
+      ).join('');
+    }
+  } catch (e) {
+    resultDiv.innerHTML = `<span class="text-red-500">${e.message}</span>`;
+  }
+}
+
+function applyKeyFilter(keyId) {
+  document.getElementById('f-key').value = String(keyId);
+  document.getElementById('sk-result').classList.add('hidden');
+  applyFilters();
+}
+
+function keyName(id) {
+  const k = keyMap[id] || keyMap[Number(id)];
+  return k ? `${id}:${k.name}` : String(id);
+}
+
+// --- Export ---
+function exportFiltered() {
+  if (!currentDate) return;
+  const params = buildFilterParams();
+  window.location.href = `${API}/api/logs/${currentDate}/export?${params}`;
+}
+
+// --- Utils ---
+function setStatus(text) {
+  document.getElementById('status-text').textContent = text;
+}
+
+function fmtNum(n) {
+  if (n == null) return '-';
+  return n.toLocaleString();
+}
+
+function fmtTokens(n) {
+  if (n == null) return '-';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return n.toString();
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+function syntaxHighlight(json) {
+  if (!json) return '';
+  json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return json.replace(
+    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+    function (match) {
+      let cls = 'json-num';
+      if (/^"/.test(match)) {
+        if (/:$/.test(match)) {
+          cls = 'json-key';
+        } else {
+          cls = 'json-str';
+        }
+      } else if (/true|false/.test(match)) {
+        cls = 'json-bool';
+      } else if (/null/.test(match)) {
+        cls = 'json-null';
+      }
+      return '<span class="' + cls + '">' + match + '</span>';
+    }
+  );
+}
+
+// Keyboard shortcut: Escape to close detail
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeDetail();
+});
+
+// Enter key on filter inputs
+['f-session', 'f-q'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => {
+    if (e.key === 'Enter') applyFilters();
+  });
+});
+document.getElementById('sk-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') lookupKey();
+});
+// Close sk-result on click outside
+document.addEventListener('click', e => {
+  const skResult = document.getElementById('sk-result');
+  if (!e.target.closest('#sk-input') && !e.target.closest('#sk-result') && !e.target.closest('[onclick*="lookupKey"]')) {
+    skResult.classList.add('hidden');
+  }
+});
+
+// Init
+async function boot() {
+  await loadKeyMap();
+  await init();
+}
+boot();
+</script>
+</body>
+</html>
