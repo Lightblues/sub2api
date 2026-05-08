@@ -699,7 +699,6 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	state := apicompat.NewResponsesEventToAnthropicState()
 	state.Model = originalModel
 	var usage OpenAIUsage
-	responseID := ""
 	var firstTokenMs *int
 	var completedEventData []byte
 	reqLogAcc := apicompat.NewBufferedResponseAccumulator()
@@ -763,8 +762,8 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		reqLogAcc.ProcessEvent(&event)
 
 		// Extract usage and capture raw completed event data for request logging
-		if (event.Type == "response.completed" || event.Type == "response.incomplete" || event.Type == "response.failed") &&
-			event.Response != nil {
+		isTerminal := isOpenAICompatResponsesTerminalEvent(event.Type)
+		if isTerminal && event.Response != nil {
 			if event.Response.Usage != nil {
 				usage = OpenAIUsage{
 					InputTokens:  event.Response.Usage.InputTokens,
@@ -803,7 +802,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		if len(events) > 0 && !clientDisconnected {
 			c.Writer.Flush()
 		}
-		return isTerminalEvent
+		return isTerminal
 	}
 
 	// finalizeStream sends any remaining Anthropic events and returns the result.

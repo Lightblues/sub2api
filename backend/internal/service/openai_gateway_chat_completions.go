@@ -544,8 +544,8 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 
 		// Extract usage from completion events
-		if (event.Type == "response.completed" || event.Type == "response.incomplete" || event.Type == "response.failed") &&
-			event.Response != nil && event.Response.Usage != nil {
+		isTerminal := isOpenAICompatResponsesTerminalEvent(event.Type)
+		if isTerminal && event.Response != nil && event.Response.Usage != nil {
 			usage = OpenAIUsage{
 				InputTokens:  event.Response.Usage.InputTokens,
 				OutputTokens: event.Response.Usage.OutputTokens,
@@ -582,7 +582,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		if len(chunks) > 0 && !clientDisconnected {
 			c.Writer.Flush()
 		}
-		return isTerminalEvent
+		return isTerminal
 	}
 
 	finalizeStream := func() (*OpenAIForwardResult, error) {
