@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // GroupUpdate is the builder for updating Group entities.
@@ -271,6 +272,55 @@ func (_u *GroupUpdate) SetNillableDefaultValidityDays(v *int) *GroupUpdate {
 // AddDefaultValidityDays adds value to the "default_validity_days" field.
 func (_u *GroupUpdate) AddDefaultValidityDays(v int) *GroupUpdate {
 	_u.mutation.AddDefaultValidityDays(v)
+	return _u
+}
+
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (_u *GroupUpdate) SetAllowImageGeneration(v bool) *GroupUpdate {
+	_u.mutation.SetAllowImageGeneration(v)
+	return _u
+}
+
+// SetNillableAllowImageGeneration sets the "allow_image_generation" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableAllowImageGeneration(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetAllowImageGeneration(*v)
+	}
+	return _u
+}
+
+// SetImageRateIndependent sets the "image_rate_independent" field.
+func (_u *GroupUpdate) SetImageRateIndependent(v bool) *GroupUpdate {
+	_u.mutation.SetImageRateIndependent(v)
+	return _u
+}
+
+// SetNillableImageRateIndependent sets the "image_rate_independent" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImageRateIndependent(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetImageRateIndependent(*v)
+	}
+	return _u
+}
+
+// SetImageRateMultiplier sets the "image_rate_multiplier" field.
+func (_u *GroupUpdate) SetImageRateMultiplier(v float64) *GroupUpdate {
+	_u.mutation.ResetImageRateMultiplier()
+	_u.mutation.SetImageRateMultiplier(v)
+	return _u
+}
+
+// SetNillableImageRateMultiplier sets the "image_rate_multiplier" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImageRateMultiplier(v *float64) *GroupUpdate {
+	if v != nil {
+		_u.SetImageRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddImageRateMultiplier adds value to the "image_rate_multiplier" field.
+func (_u *GroupUpdate) AddImageRateMultiplier(v float64) *GroupUpdate {
+	_u.mutation.AddImageRateMultiplier(v)
 	return _u
 }
 
@@ -549,6 +599,41 @@ func (_u *GroupUpdate) SetNillableDefaultMappedModel(v *string) *GroupUpdate {
 	if v != nil {
 		_u.SetDefaultMappedModel(*v)
 	}
+	return _u
+}
+
+// SetMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field.
+func (_u *GroupUpdate) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesDispatchModelConfig) *GroupUpdate {
+	_u.mutation.SetMessagesDispatchModelConfig(v)
+	return _u
+}
+
+// SetNillableMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableMessagesDispatchModelConfig(v *domain.OpenAIMessagesDispatchModelConfig) *GroupUpdate {
+	if v != nil {
+		_u.SetMessagesDispatchModelConfig(*v)
+	}
+	return _u
+}
+
+// SetRpmLimit sets the "rpm_limit" field.
+func (_u *GroupUpdate) SetRpmLimit(v int) *GroupUpdate {
+	_u.mutation.ResetRpmLimit()
+	_u.mutation.SetRpmLimit(v)
+	return _u
+}
+
+// SetNillableRpmLimit sets the "rpm_limit" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableRpmLimit(v *int) *GroupUpdate {
+	if v != nil {
+		_u.SetRpmLimit(*v)
+	}
+	return _u
+}
+
+// AddRpmLimit adds value to the "rpm_limit" field.
+func (_u *GroupUpdate) AddRpmLimit(v int) *GroupUpdate {
+	_u.mutation.AddRpmLimit(v)
 	return _u
 }
 
@@ -926,6 +1011,18 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedDefaultValidityDays(); ok {
 		_spec.AddField(group.FieldDefaultValidityDays, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.AllowImageGeneration(); ok {
+		_spec.SetField(group.FieldAllowImageGeneration, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageRateIndependent(); ok {
+		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageRateMultiplier(); ok {
+		_spec.SetField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedImageRateMultiplier(); ok {
+		_spec.AddField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.ImagePrice1k(); ok {
 		_spec.SetField(group.FieldImagePrice1k, field.TypeFloat64, value)
 	}
@@ -1011,6 +1108,15 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.DefaultMappedModel(); ok {
 		_spec.SetField(group.FieldDefaultMappedModel, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.MessagesDispatchModelConfig(); ok {
+		_spec.SetField(group.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.RpmLimit(); ok {
+		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedRpmLimit(); ok {
+		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -1565,6 +1671,55 @@ func (_u *GroupUpdateOne) AddDefaultValidityDays(v int) *GroupUpdateOne {
 	return _u
 }
 
+// SetAllowImageGeneration sets the "allow_image_generation" field.
+func (_u *GroupUpdateOne) SetAllowImageGeneration(v bool) *GroupUpdateOne {
+	_u.mutation.SetAllowImageGeneration(v)
+	return _u
+}
+
+// SetNillableAllowImageGeneration sets the "allow_image_generation" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableAllowImageGeneration(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetAllowImageGeneration(*v)
+	}
+	return _u
+}
+
+// SetImageRateIndependent sets the "image_rate_independent" field.
+func (_u *GroupUpdateOne) SetImageRateIndependent(v bool) *GroupUpdateOne {
+	_u.mutation.SetImageRateIndependent(v)
+	return _u
+}
+
+// SetNillableImageRateIndependent sets the "image_rate_independent" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImageRateIndependent(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImageRateIndependent(*v)
+	}
+	return _u
+}
+
+// SetImageRateMultiplier sets the "image_rate_multiplier" field.
+func (_u *GroupUpdateOne) SetImageRateMultiplier(v float64) *GroupUpdateOne {
+	_u.mutation.ResetImageRateMultiplier()
+	_u.mutation.SetImageRateMultiplier(v)
+	return _u
+}
+
+// SetNillableImageRateMultiplier sets the "image_rate_multiplier" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImageRateMultiplier(v *float64) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImageRateMultiplier(*v)
+	}
+	return _u
+}
+
+// AddImageRateMultiplier adds value to the "image_rate_multiplier" field.
+func (_u *GroupUpdateOne) AddImageRateMultiplier(v float64) *GroupUpdateOne {
+	_u.mutation.AddImageRateMultiplier(v)
+	return _u
+}
+
 // SetImagePrice1k sets the "image_price_1k" field.
 func (_u *GroupUpdateOne) SetImagePrice1k(v float64) *GroupUpdateOne {
 	_u.mutation.ResetImagePrice1k()
@@ -1840,6 +1995,41 @@ func (_u *GroupUpdateOne) SetNillableDefaultMappedModel(v *string) *GroupUpdateO
 	if v != nil {
 		_u.SetDefaultMappedModel(*v)
 	}
+	return _u
+}
+
+// SetMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field.
+func (_u *GroupUpdateOne) SetMessagesDispatchModelConfig(v domain.OpenAIMessagesDispatchModelConfig) *GroupUpdateOne {
+	_u.mutation.SetMessagesDispatchModelConfig(v)
+	return _u
+}
+
+// SetNillableMessagesDispatchModelConfig sets the "messages_dispatch_model_config" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableMessagesDispatchModelConfig(v *domain.OpenAIMessagesDispatchModelConfig) *GroupUpdateOne {
+	if v != nil {
+		_u.SetMessagesDispatchModelConfig(*v)
+	}
+	return _u
+}
+
+// SetRpmLimit sets the "rpm_limit" field.
+func (_u *GroupUpdateOne) SetRpmLimit(v int) *GroupUpdateOne {
+	_u.mutation.ResetRpmLimit()
+	_u.mutation.SetRpmLimit(v)
+	return _u
+}
+
+// SetNillableRpmLimit sets the "rpm_limit" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableRpmLimit(v *int) *GroupUpdateOne {
+	if v != nil {
+		_u.SetRpmLimit(*v)
+	}
+	return _u
+}
+
+// AddRpmLimit adds value to the "rpm_limit" field.
+func (_u *GroupUpdateOne) AddRpmLimit(v int) *GroupUpdateOne {
+	_u.mutation.AddRpmLimit(v)
 	return _u
 }
 
@@ -2247,6 +2437,18 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	if value, ok := _u.mutation.AddedDefaultValidityDays(); ok {
 		_spec.AddField(group.FieldDefaultValidityDays, field.TypeInt, value)
 	}
+	if value, ok := _u.mutation.AllowImageGeneration(); ok {
+		_spec.SetField(group.FieldAllowImageGeneration, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageRateIndependent(); ok {
+		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ImageRateMultiplier(); ok {
+		_spec.SetField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.AddedImageRateMultiplier(); ok {
+		_spec.AddField(group.FieldImageRateMultiplier, field.TypeFloat64, value)
+	}
 	if value, ok := _u.mutation.ImagePrice1k(); ok {
 		_spec.SetField(group.FieldImagePrice1k, field.TypeFloat64, value)
 	}
@@ -2332,6 +2534,15 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.DefaultMappedModel(); ok {
 		_spec.SetField(group.FieldDefaultMappedModel, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.MessagesDispatchModelConfig(); ok {
+		_spec.SetField(group.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.RpmLimit(); ok {
+		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedRpmLimit(); ok {
+		_spec.AddField(group.FieldRpmLimit, field.TypeInt, value)
 	}
 	if _u.mutation.APIKeysCleared() {
 		edge := &sqlgraph.EdgeSpec{
