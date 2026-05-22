@@ -8,6 +8,7 @@ import (
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 const (
@@ -43,6 +44,12 @@ const (
 	FieldMonthlyLimitUsd = "monthly_limit_usd"
 	// FieldDefaultValidityDays holds the string denoting the default_validity_days field in the database.
 	FieldDefaultValidityDays = "default_validity_days"
+	// FieldAllowImageGeneration holds the string denoting the allow_image_generation field in the database.
+	FieldAllowImageGeneration = "allow_image_generation"
+	// FieldImageRateIndependent holds the string denoting the image_rate_independent field in the database.
+	FieldImageRateIndependent = "image_rate_independent"
+	// FieldImageRateMultiplier holds the string denoting the image_rate_multiplier field in the database.
+	FieldImageRateMultiplier = "image_rate_multiplier"
 	// FieldImagePrice1k holds the string denoting the image_price_1k field in the database.
 	FieldImagePrice1k = "image_price_1k"
 	// FieldImagePrice2k holds the string denoting the image_price_2k field in the database.
@@ -73,6 +80,10 @@ const (
 	FieldRequirePrivacySet = "require_privacy_set"
 	// FieldDefaultMappedModel holds the string denoting the default_mapped_model field in the database.
 	FieldDefaultMappedModel = "default_mapped_model"
+	// FieldMessagesDispatchModelConfig holds the string denoting the messages_dispatch_model_config field in the database.
+	FieldMessagesDispatchModelConfig = "messages_dispatch_model_config"
+	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
+	FieldRpmLimit = "rpm_limit"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -162,6 +173,9 @@ var Columns = []string{
 	FieldWeeklyLimitUsd,
 	FieldMonthlyLimitUsd,
 	FieldDefaultValidityDays,
+	FieldAllowImageGeneration,
+	FieldImageRateIndependent,
+	FieldImageRateMultiplier,
 	FieldImagePrice1k,
 	FieldImagePrice2k,
 	FieldImagePrice4k,
@@ -177,6 +191,8 @@ var Columns = []string{
 	FieldRequireOauthOnly,
 	FieldRequirePrivacySet,
 	FieldDefaultMappedModel,
+	FieldMessagesDispatchModelConfig,
+	FieldRpmLimit,
 }
 
 var (
@@ -232,6 +248,12 @@ var (
 	SubscriptionTypeValidator func(string) error
 	// DefaultDefaultValidityDays holds the default value on creation for the "default_validity_days" field.
 	DefaultDefaultValidityDays int
+	// DefaultAllowImageGeneration holds the default value on creation for the "allow_image_generation" field.
+	DefaultAllowImageGeneration bool
+	// DefaultImageRateIndependent holds the default value on creation for the "image_rate_independent" field.
+	DefaultImageRateIndependent bool
+	// DefaultImageRateMultiplier holds the default value on creation for the "image_rate_multiplier" field.
+	DefaultImageRateMultiplier float64
 	// DefaultClaudeCodeOnly holds the default value on creation for the "claude_code_only" field.
 	DefaultClaudeCodeOnly bool
 	// DefaultModelRoutingEnabled holds the default value on creation for the "model_routing_enabled" field.
@@ -252,6 +274,10 @@ var (
 	DefaultDefaultMappedModel string
 	// DefaultMappedModelValidator is a validator for the "default_mapped_model" field. It is called by the builders before save.
 	DefaultMappedModelValidator func(string) error
+	// DefaultMessagesDispatchModelConfig holds the default value on creation for the "messages_dispatch_model_config" field.
+	DefaultMessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig
+	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
+	DefaultRpmLimit int
 )
 
 // OrderOption defines the ordering options for the Group queries.
@@ -332,6 +358,21 @@ func ByDefaultValidityDays(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDefaultValidityDays, opts...).ToFunc()
 }
 
+// ByAllowImageGeneration orders the results by the allow_image_generation field.
+func ByAllowImageGeneration(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldAllowImageGeneration, opts...).ToFunc()
+}
+
+// ByImageRateIndependent orders the results by the image_rate_independent field.
+func ByImageRateIndependent(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageRateIndependent, opts...).ToFunc()
+}
+
+// ByImageRateMultiplier orders the results by the image_rate_multiplier field.
+func ByImageRateMultiplier(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageRateMultiplier, opts...).ToFunc()
+}
+
 // ByImagePrice1k orders the results by the image_price_1k field.
 func ByImagePrice1k(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldImagePrice1k, opts...).ToFunc()
@@ -395,6 +436,11 @@ func ByRequirePrivacySet(opts ...sql.OrderTermOption) OrderOption {
 // ByDefaultMappedModel orders the results by the default_mapped_model field.
 func ByDefaultMappedModel(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDefaultMappedModel, opts...).ToFunc()
+}
+
+// ByRpmLimit orders the results by the rpm_limit field.
+func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRpmLimit, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.
