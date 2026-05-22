@@ -180,9 +180,9 @@
 
 **部署步骤**：
 ```bash
-cd /root/sub2api/src && git pull origin eason
+cd /root/sub2api && git pull origin eason
 docker build -t sub2api:eason .
-cd /root/sub2api && docker compose up -d sub2api
+docker compose up -d sub2api
 ```
 
 **HTTPS 问题诊断**：
@@ -228,3 +228,17 @@ cd /root/sub2api && docker compose up -d sub2api
 - 配置 cron `0 3 * * *` 每天自动归档
 - 更新 `sub2api-inspector` 支持透明读取归档数据（`INSPECTOR_ARCHIVE_DIR` 环境变量）
 - 详见 [request_log.md](./request_log.md#自动归档)
+
+---
+
+## 2026-05-22：项目结构调整 + proxy 容器化
+
+**目录结构**：将 `/root/sub2api/src/` 下的 git 仓库提升到 `/root/sub2api/` 顶层，消除多余的 `src/` 嵌套。部署命令从 `cd src && ... && cd .. && docker compose` 简化为直接在项目根目录操作。
+
+**youtu_llm_proxy 容器化**：将原先跑在宿主机 systemd 上的 `youtu_llm_proxy.py` 嵌入 Docker 镜像：
+- Dockerfile 增加 Python3 + fastapi/uvicorn/httpx
+- entrypoint 根据 `YOUTU_LLM_TOKEN` 环境变量条件启动 proxy（绑定 `127.0.0.1:8088`）
+- 账号 base_url 从 `http://172.21.0.1:8088` 改为 `http://127.0.0.1:8088`
+- 宿主机 systemd `youtu-llm-proxy.service` 已停用并删除
+
+**其他**：codex 默认模型从 `gpt-5.4` 更新为 `gpt-5.5`（Use Key modal + CCS import）

@@ -1,0 +1,56 @@
+# ============================================================
+# TI-ONE 自定义训练镜像 - CPU 基础镜像（极简版）
+# 参考官方案例：https://cloud.tencent.com/document/product/851/86695
+# 关键：不要设置 CMD，由平台负责启动 sshd 和 jupyter
+# ============================================================
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# [推荐] 使用腾讯云内网源加速（构建机在腾讯云时使用）
+ENV TENCENT_MIRRORS="mirrors.tencentyun.com"
+RUN sed -i "s@archive.ubuntu.com@${TENCENT_MIRRORS}@g" /etc/apt/sources.list 2>/dev/null || true && \
+    sed -i "s@security.ubuntu.com@${TENCENT_MIRRORS}@g" /etc/apt/sources.list 2>/dev/null || true && \
+    sed -i "s@archive.ubuntu.com@${TENCENT_MIRRORS}@g" /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true && \
+    sed -i "s@security.ubuntu.com@${TENCENT_MIRRORS}@g" /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+
+# [基本镜像规范] 安装 openssh-server + git
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        openssh-server \
+        git \
+        curl \
+        wget \
+        ca-certificates \
+        tini && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    mkdir -p /var/run/sshd
+
+# Python 环境
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    ln -sf /usr/bin/python3 /usr/bin/python && \
+    ln -sf /usr/bin/pip3    /usr/bin/pip
+
+# 配置 pip 镜像源
+RUN pip config set global.index-url http://${TENCENT_MIRRORS}/pypi/simple --break-system-packages || true && \
+    pip config set global.trusted-host ${TENCENT_MIRRORS} --break-system-packages || true
+
+# JupyterLab
+RUN pip install --no-cache-dir --break-system-packages jupyterlab
+
+# [开发机镜像规范] 配置 /opt/dl/run 启动入口（平台会调用）
+RUN mkdir -p /opt/dl && \
+    echo "cd /home/tione/notebook && jupyter lab --allow-root --no-browser --ip=0.0.0.0 --port=8888 --notebook-dir=/home/tione/notebook --NotebookApp.allow_origin='*' --NotebookApp.token=''" > /opt/dl/run && \
+    chmod a+x /opt/dl/run
+
+# 创建工作目录
+RUN mkdir -p /home/tione/notebook
+
+# [推荐] 使用 tini 作为 entrypoint，回收僵尸进程
+ENTRYPOINT ["/usr/bin/tini", "-g", "--"]

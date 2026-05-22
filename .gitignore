@@ -1,4 +1,5 @@
-docs/claude-relay-service/
+.tmp
+.codex
 
 # ===================
 # Go 后端
@@ -107,6 +108,7 @@ backend/data/
 # ===================
 # 本地配置文件（包含敏感信息）
 # ===================
+config.yaml
 backend/config.yaml
 deploy/config.yaml
 backend/.installed
@@ -121,12 +123,15 @@ scripts
 .code-review-state
 #openspec/
 code-reviews/
-#AGENTS.md
+AGENTS.md
 backend/cmd/server/server
 deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
 docs/*
+!docs/PAYMENT.md
+!docs/PAYMENT_CN.md
+!docs/ADMIN_PAYMENT_INTEGRATION_API.md
 .serena/
 .codex/
 frontend/coverage/

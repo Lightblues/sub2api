@@ -1,0 +1,155 @@
+# =============================================================================
+# Sub2API — TI-ONE All-in-One image
+# =============================================================================
+# 包含:
+#   - PostgreSQL 15
+#   - Redis 7
+#   - sub2api (自编译,包含 eason 分支的全部 [custom] 改动)
+#   - youtu_llm_proxy.py (FastAPI sidecar)
+#   - supervisord (PID 1 via tini)
+#
+# 构建上下文应为 /root/sub2api/ (即 src/ 的父目录),以便同时拷入 src/ 和 tione/
+#   docker build -f tione/Dockerfile.tione -t sub2api-tione:v1 .
+# =============================================================================
+
+ARG NODE_IMAGE=node:24-alpine
+ARG GOLANG_IMAGE=golang:1.26.2-alpine
+ARG BASE_IMAGE=ubuntu:24.04
+ARG GOPROXY=https://goproxy.cn,direct
+ARG GOSUMDB=sum.golang.google.cn
+
+# -----------------------------------------------------------------------------
+# Stage 1: Frontend builder (Vue 3 + Vite + pnpm)
+# -----------------------------------------------------------------------------
+FROM ${NODE_IMAGE} AS frontend-builder
+
+WORKDIR /app/frontend
+
+# 用国内 npm 镜像 + npm install -g pnpm,避开 corepack 访问 registry.npmjs.org 失败
+RUN npm config set registry https://registry.npmmirror.com && \
+    npm install -g pnpm
+
+# 依赖层(利用 Docker cache)
+COPY src/frontend/package.json src/frontend/pnpm-lock.yaml ./
+RUN pnpm config set registry https://registry.npmmirror.com && \
+    pnpm install --frozen-lockfile
+
+# 源码 + 构建
+COPY src/frontend/ ./
+RUN pnpm run build
+# 产物位于 /app/backend/internal/web/dist (pnpm build 配置决定)
+
+# -----------------------------------------------------------------------------
+# Stage 2: Backend builder (Go + embed frontend)
+# -----------------------------------------------------------------------------
+FROM ${GOLANG_IMAGE} AS backend-builder
+
+ARG GOPROXY
+ARG GOSUMDB
+ARG VERSION=tione
+ARG COMMIT=tione
+ARG DATE
+
+ENV GOPROXY=${GOPROXY}
+ENV GOSUMDB=${GOSUMDB}
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+
+RUN sed -i 's@dl-cdn.alpinelinux.org@mirrors.tencent.com@g' /etc/apk/repositories && \
+    apk add --no-cache git ca-certificates tzdata
+
+WORKDIR /app/backend
+
+# go.mod / go.sum 单独一层(依赖缓存)
+COPY src/backend/go.mod src/backend/go.sum ./
+RUN go mod download
+
+# 后端源码
+COPY src/backend/ ./
+
+# 从 frontend-builder 拷 dist(必须在 backend 源码拷贝之后,避免被覆盖)
+COPY --from=frontend-builder /app/backend/internal/web/dist ./internal/web/dist
+
+RUN go build \
+      -tags embed \
+      -ldflags="-s -w -X main.Commit=${COMMIT} -X main.Date=${DATE:-unknown} -X main.BuildType=release" \
+      -o /out/sub2api \
+      ./cmd/server
+
+# -----------------------------------------------------------------------------
+# Stage 3: Runtime (Ubuntu 24.04 + PG + Redis + Python + supervisord)
+# -----------------------------------------------------------------------------
+FROM ${BASE_IMAGE}
+
+LABEL maintainer="easonsshi"
+LABEL description="Sub2API All-in-One image for Tencent TI-ONE platform"
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    TZ=Asia/Shanghai \
+    PG_VERSION=16 \
+    PG_BIN=/usr/lib/postgresql/16/bin \
+    PG_DATA_DIR=/data/sub2api/pgdata \
+    REDIS_DATA_DIR=/data/sub2api/redis \
+    SUB2API_DATA_DIR=/data/sub2api/appdata \
+    YOUTU_PROXY_DIR=/data/sub2api/youtu_proxy \
+    SUB2API_BIN=/app/sub2api \
+    SUB2API_PORT=8080 \
+    YOUTU_PROXY_PORT=8088
+
+# 3.1 系统依赖
+#   - PostgreSQL 使用 ubuntu 24.04 自带的 postgresql-16 (sub2api 要求 PG 15+,16 兼容)
+#   - tini 作 PID 1
+RUN set -eux; \
+    # 切换到腾讯云 apt 镜像(ubuntu 24.04 = noble)
+    sed -i 's@http://archive.ubuntu.com@http://mirrors.tencentyun.com@g; s@http://ports.ubuntu.com@http://mirrors.tencentyun.com@g; s@http://security.ubuntu.com@http://mirrors.tencentyun.com@g' \
+        /etc/apt/sources.list /etc/apt/sources.list.d/*.sources 2>/dev/null || true; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg lsb-release \
+        tini supervisor \
+        redis-server \
+        postgresql-16 postgresql-contrib-16 \
+        python3 python3-pip python3-venv \
+        locales tzdata openssl; \
+    # 清理
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*; \
+    ln -sf /usr/share/zoneinfo/${TZ} /etc/localtime
+
+# 3.2 Python 依赖(youtu_proxy 需要)
+#     ubuntu-base:24.04-v3 里已经预装了大量 pip 包;这里补齐以防基础镜像变动
+RUN pip3 install --no-cache-dir --break-system-packages \
+        -i https://mirrors.tencent.com/pypi/simple/ \
+        fastapi 'uvicorn[standard]' 'httpx>=0.27'
+
+# 3.3 sub2api 二进制
+COPY --from=backend-builder /out/sub2api ${SUB2API_BIN}
+RUN chmod +x ${SUB2API_BIN}
+
+# 3.4 youtu_llm_proxy 脚本(只读安置在 /opt 下,不能放 /data/sub2api)
+COPY tione/youtu_llm_proxy.py /opt/youtu_proxy/youtu_llm_proxy.py
+
+# 3.5 supervisord 配置与 entrypoint
+COPY tione/supervisord.conf    /etc/supervisor/conf.d/sub2api.conf
+COPY tione/entrypoint.sh       /entrypoint.sh
+COPY tione/youtu_proxy.env.example /opt/youtu_proxy/.env.example
+RUN chmod +x /entrypoint.sh
+
+# 3.6 默认 config.yaml 模板(首次启动时若 CFS 无配置则拷入)
+COPY src/deploy/config.example.yaml /opt/sub2api/config.default.yaml
+
+# 3.7 确保必需的本地运行目录存在(不依赖 CFS 的部分)
+RUN mkdir -p /var/run/postgresql && \
+    chown -R postgres:postgres /var/run/postgresql && \
+    mkdir -p /var/log/supervisor
+
+# 3.8 暴露端口
+#     TI-ONE 默认服务端口是 8501,但你选择保持官方一致监听 8080。
+#     在 TI-ONE 控制台把 "容器端口" 填 8080 即可;此处 EXPOSE 8080 作为元信息。
+EXPOSE 8080
+
+# 3.9 PID 1 = tini → entrypoint → supervisord
+ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/sub2api.conf"]
