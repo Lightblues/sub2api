@@ -590,10 +590,10 @@ export default {
     useKeyModal: {
       title: 'Use API Key',
       description:
-        'Add the following environment variables to your terminal profile or run directly in terminal to configure API access.',
+        'Add the following environment variables to your shell configuration file to configure API access, then run claude to start.',
       copy: 'Copy',
       copied: 'Copied',
-      note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
+      note: 'Add these to your shell configuration file (~/.bashrc, ~/.zshrc, etc.) for permanent configuration, then run claude each time to start. For single-session use, export them directly in the terminal and run claude.',
       noGroupTitle: 'Please assign a group first',
       noGroupDescription: 'This API key has not been assigned to a group. Please click the group column in the key list to assign one before viewing the configuration.',
       openai: {
@@ -613,7 +613,7 @@ export default {
         description: 'Configure API access for Antigravity group. Select the configuration method based on your client.',
         claudeCode: 'Claude Code',
         geminiCli: 'Gemini CLI',
-        claudeNote: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
+        claudeNote: 'Add these to your shell configuration file (~/.bashrc, ~/.zshrc, etc.) for permanent configuration, then run claude each time to start. For single-session use, export them directly in the terminal and run claude.',
         geminiNote: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
       },
       gemini: {

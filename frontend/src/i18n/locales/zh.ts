@@ -589,10 +589,10 @@ export default {
     useKey: '使用密钥',
     useKeyModal: {
       title: '使用 API 密钥',
-      description: '将以下环境变量添加到您的终端配置文件或直接在终端中运行。',
+      description: '将以下环境变量添加到您的 Shell 配置文件中，配置完成后运行 claude 即可启动。',
       copy: '复制',
       copied: '已复制',
-      note: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
+      note: '将这些环境变量添加到 Shell 配置文件（~/.bashrc、~/.zshrc 等）中即可永久生效，之后每次运行 claude 即可启动。若仅需单次会话生效，可直接在终端中 export 后运行 claude。',
       noGroupTitle: '请先分配分组',
       noGroupDescription:
         '此 API 密钥尚未分配分组，请先在密钥列表中点击分组列进行分配，然后才能查看使用配置。',
@@ -615,7 +615,7 @@ export default {
         claudeCode: 'Claude Code',
         geminiCli: 'Gemini CLI',
         claudeNote:
-          '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
+          '将这些环境变量添加到 Shell 配置文件（~/.bashrc、~/.zshrc 等）中即可永久生效，之后每次运行 claude 即可启动。若仅需单次会话生效，可直接在终端中 export 后运行 claude。',
         geminiNote:
           '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。'
       },

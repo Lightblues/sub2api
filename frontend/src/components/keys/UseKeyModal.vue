@@ -439,34 +439,31 @@ function generateAnthropicFiles(baseUrl: string, apiKey: string): FileConfig[] {
 
   switch (activeTab.value) {
     case 'unix':
-      path = 'Terminal'
+      path = '~/.bashrc or ~/.zshrc'
       content = `export ANTHROPIC_BASE_URL="${baseUrl}"
 export ANTHROPIC_AUTH_TOKEN="${apiKey}"
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 export CLAUDE_CODE_ATTRIBUTION_HEADER=0
-export CLAUDE_CODE_EFFORT_LEVEL=max
-claude`
+export CLAUDE_CODE_EFFORT_LEVEL=max`
       break
     case 'cmd':
-      path = 'Command Prompt'
+      path = 'System Environment Variables'
       content = `set ANTHROPIC_BASE_URL=${baseUrl}
 set ANTHROPIC_AUTH_TOKEN=${apiKey}
 set CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 set CLAUDE_CODE_ATTRIBUTION_HEADER=0
-set CLAUDE_CODE_EFFORT_LEVEL=max
-claude`
+set CLAUDE_CODE_EFFORT_LEVEL=max`
       break
     case 'powershell':
-      path = 'PowerShell'
+      path = '$PROFILE (PowerShell Profile)'
       content = `$env:ANTHROPIC_BASE_URL="${baseUrl}"
 $env:ANTHROPIC_AUTH_TOKEN="${apiKey}"
 $env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 $env:CLAUDE_CODE_ATTRIBUTION_HEADER=0
-$env:CLAUDE_CODE_EFFORT_LEVEL=max
-claude`
+$env:CLAUDE_CODE_EFFORT_LEVEL=max`
       break
     default:
-      path = 'Terminal'
+      path = '~/.bashrc or ~/.zshrc'
       content = ''
   }
 
