@@ -99,6 +99,10 @@ RUN apk add --no-cache \
     krb5-libs \
     libldap \
     libedit \
+    python3 \
+    py3-pip \
+    && pip3 install --no-cache-dir --break-system-packages \
+    fastapi uvicorn httpx \
     && rm -rf /var/cache/apk/*
 
 # Copy pg_dump and psql from the same postgres image used in docker-compose
@@ -117,6 +121,9 @@ WORKDIR /app
 # Copy binary/resources with ownership to avoid extra full-layer chown copy
 COPY --from=backend-builder --chown=sub2api:sub2api /app/sub2api /app/sub2api
 COPY --from=backend-builder --chown=sub2api:sub2api /app/backend/resources /app/resources
+
+# Copy youtu LLM proxy sidecar script (optional, activated by YOUTU_LLM_TOKEN env var)
+COPY youtu_llm_proxy.py /app/youtu_llm_proxy.py
 
 # Create data directory
 RUN mkdir -p /app/data && chown sub2api:sub2api /app/data
