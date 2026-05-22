@@ -24,7 +24,7 @@ Sub2API 是一个 AI API 网关，把多个 Claude / OpenAI / Gemini 订阅账�
 | Sub2API 主服务 | `http://anydev_llmrouter:80` |
 | Inspector 日志查看器 | `http://anydev_llmrouter:8019` |
 | 内网域名 | `sn5llmrouter.devcloud.woa.com` |
-| Youtu LLM Proxy（sidecar） | `http://anydev_llmrouter:8088`（仅内网/宿主机） |
+| Youtu LLM Proxy（容器内 sidecar） | `http://127.0.0.1:8088`（仅容器内部） |
 
 ### 数据存储位置
 
@@ -37,34 +37,35 @@ Sub2API 是一个 AI API 网关，把多个 Claude / OpenAI / Gemini 订阅账�
 
 > `/data` 盘已扩容至 1TB。请求日志通过 cron 定期归档到 CephFS，详见 [request_log.md](./request_log.md#自动归档)。
 
-### Youtu LLM Proxy（方案 C sidecar）
+### Youtu LLM Proxy（容器内 sidecar）
 
 将腾讯内部 tRPC Claude 服务（`claude-opus/sonnet-4-6`）通过标准 Anthropic Messages API 对外暴露，作为 sub2api 的一个独立计费组（`youtu-claude`, id=20）。
 
 **架构：**
 ```
-sub2api (Docker :80)  →  youtu_llm_proxy.py (宿主机 :8088)  →  内部 tRPC (112.65.194.90:8001)
-                  http://172.21.0.1:8088
+用户 → sub2api container :80
+         ├─ sub2api (Go, :8080)
+         └─ youtu_llm_proxy.py (Python, 127.0.0.1:8088)
+              → 内部 tRPC (112.65.194.90:8001)
 ```
 
-**配置文件：** `.ea/.env`（含 `YOUTU_LLM_TOKEN` 等敏感凭证，已被 `.gitignore` 排除）
+proxy 嵌入 Docker 镜像，由 entrypoint 在 sub2api 启动前后台拉起。通过 `YOUTU_LLM_TOKEN` 环境变量控制是否启动（不配置则不启动，不影响其他部署）。
 
-**脚本位置：** `.ea/youtu_llm_proxy.py`（同步到服务器 `/root/youtu_llm_proxy.py`）
+**脚本位置：** `youtu_llm_proxy.py`（项目根目录，打入镜像 `/app/youtu_llm_proxy.py`）
 
-**进程管理：** systemd（`youtu-llm-proxy.service`），自动重启 + 开机自启
+**配置：** `.env` 中的 `YOUTU_LLM_*` 变量，通过 `docker-compose.yml` 透传到容器
+
+**日志：** 容器内 `/app/data/youtu_proxy.log`（挂载到 Docker volume `sub2api_data`）
 
 ```bash
-# 状态/重启/日志
-systemctl status youtu-llm-proxy
-systemctl restart youtu-llm-proxy
-tail -f /root/youtu_llm_proxy.log
+# 健康检查（容器内）
+docker exec sub2api wget -q -O - http://127.0.0.1:8088/health
 
-# 更新脚本后重启
-scp .ea/youtu_llm_proxy.py anydev_llmrouter:/root/youtu_llm_proxy.py
-ssh anydev_llmrouter "systemctl restart youtu-llm-proxy"
+# 查看 proxy 日志
+docker exec sub2api cat /app/data/youtu_proxy.log
 
-# 健康检查
-curl http://127.0.0.1:8088/health
+# 查看容器内进程
+docker exec sub2api ps aux
 ```
 
 **sub2api 账号（Admin UI）：**
@@ -72,9 +73,7 @@ curl http://127.0.0.1:8088/health
 | 项 | 值 |
 |----|-----|
 | Group | `youtu-claude`（id=20，platform=anthropic） |
-| Account | `youtu-llm-proxy`（id=400，type=upstream，base_url=`http://172.21.0.1:8088`） |
-
-> `172.21.0.1` 是 Docker bridge `sub2api-network` 的网关 IP（即宿主机地址），容器通过此 IP 访问宿主机上的 proxy。
+| Account | `youtu-llm-proxy`（id=400，type=upstream，base_url=`http://127.0.0.1:8088`） |
 
 **Go 代码修改（`[custom]` commits）：**
 - `backend/internal/service/account.go`：`GetBaseURL()` 支持 `AccountTypeUpstream`
@@ -84,9 +83,9 @@ curl http://127.0.0.1:8088/health
 
 ```bash
 ssh anydev_llmrouter
-cd /root/sub2api/src && git pull origin eason
+cd /root/sub2api && git pull origin eason
 docker build -t sub2api:eason .
-cd /root/sub2api && docker compose up -d sub2api
+docker compose up -d sub2api
 ```
 
 ### 重启 Inspector
