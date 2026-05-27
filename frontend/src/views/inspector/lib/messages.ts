@@ -68,6 +68,94 @@ export function summarize(content: string | null | undefined, max = 100): string
 }
 
 /**
+ * Extract the model response output from the raw record's response_complete field.
+ * Handles OpenAI Responses API format: response_complete.response.output[]
+ * and ChatCompletions format: response_body.choices[].message
+ */
+export function extractResponseOutput(record: Record<string, unknown>): NormalizedMessage[] {
+  const result: NormalizedMessage[] = []
+
+  // OpenAI Responses API: response_complete.response.output
+  const rc = record.response_complete as Record<string, unknown> | undefined
+  if (rc) {
+    const resp = rc.response as Record<string, unknown> | undefined
+    if (resp) {
+      const output = resp.output as Array<Record<string, unknown>> | undefined
+      if (Array.isArray(output)) {
+        for (const item of output) {
+          if (item.type === 'message' && item.role === 'assistant') {
+            const content = item.content as Array<Record<string, unknown>> | undefined
+            if (Array.isArray(content)) {
+              const textParts = content
+                .filter((c) => c.type === 'output_text' || c.type === 'text')
+                .map((c) => (c.text as string) ?? '')
+              if (textParts.length > 0) {
+                result.push({ role: 'assistant', content: textParts.join('\n') })
+              }
+            }
+          } else if (item.type === 'reasoning') {
+            const summary = item.summary as Array<Record<string, unknown>> | undefined
+            if (Array.isArray(summary)) {
+              const text = summary
+                .filter((s) => s.type === 'summary_text')
+                .map((s) => (s.text as string) ?? '')
+                .join('\n')
+              if (text) {
+                result.push({ role: 'assistant', reasoning_content: text })
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ChatCompletions format: response_body.choices[].message
+  if (result.length === 0) {
+    const rb = record.response_body as Record<string, unknown> | undefined
+    if (rb) {
+      const choices = rb.choices as Array<Record<string, unknown>> | undefined
+      if (Array.isArray(choices)) {
+        for (const choice of choices) {
+          const msg = choice.message as Record<string, unknown> | undefined
+          if (msg && msg.role === 'assistant') {
+            const nm: NormalizedMessage = {
+              role: 'assistant',
+              content: (msg.content as string) ?? undefined,
+              reasoning_content: (msg.reasoning_content as string) ?? null,
+              tool_calls: msg.tool_calls as NormalizedMessage['tool_calls']
+            }
+            result.push(nm)
+          }
+        }
+      }
+    }
+  }
+
+  // Anthropic Messages format: response_complete has content[] directly (or via response_body)
+  if (result.length === 0 && rc) {
+    const content = rc.content as Array<Record<string, unknown>> | undefined
+    if (Array.isArray(content)) {
+      const textParts = content
+        .filter((c) => c.type === 'text')
+        .map((c) => (c.text as string) ?? '')
+      const thinkingParts = content
+        .filter((c) => c.type === 'thinking')
+        .map((c) => (c.thinking as string) ?? '')
+      if (textParts.length > 0 || thinkingParts.length > 0) {
+        result.push({
+          role: 'assistant',
+          content: textParts.join('\n') || undefined,
+          reasoning_content: thinkingParts.length > 0 ? thinkingParts.join('\n') : null
+        })
+      }
+    }
+  }
+
+  return result
+}
+
+/**
  * Detect if a request body uses Anthropic format and normalize messages
  * to a unified shape for the ChatView component.
  */
