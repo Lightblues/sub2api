@@ -1,87 +1,80 @@
 # Inspector（日志查看器）
 
-> 部署地址：`http://anydev_llmrouter:8019`
+> 访问地址：`http://anydev_llmrouter/inspector`（已集成到 Sub2API 前端）
 
 ## 概述
 
-Web 工具，用于可视化和调试 sub2api 请求日志。Python FastAPI 后端（只读） + 单文件 HTML 前端（Tailwind CDN + 原生 JS）。
+Sub2API 内置的请求日志可视化工具。后端为 Go（扩展 `RequestLogReaderService`），前端为 Vue 3 SPA 页面（与 Sub2API 共享认证）。
+
+**2026-05-27 迁移**：从独立 Python FastAPI 服务（端口 8019）迁移为 Sub2API 内置功能。原 systemd 服务 `sub2api-inspector.service` 已停用。
 
 ## 架构
 
 ```
-Browser ──→ FastAPI (:8019) ──→ SQLite（只读）
-               │                    ↑ Go 后端写入
-               │              request_log.db
-               └──→ PostgreSQL（docker exec psql）──→ api_keys 表
+Browser ──→ Vue SPA /inspector ──→ Go Backend /api/v1/inspector/*
+                                        │
+                                        ├──→ SQLite request_log.db（WAL 只读）
+                                        ├──→ Archive per-day .db files
+                                        └──→ PostgreSQL api_keys 表
 ```
 
-- **Inspector 只读**：以 WAL 模式打开 SQLite，和 Go 后端并发读写不冲突
-- **API Key 名称**：通过 `docker exec` 查询 sub2api-postgres 容器的 `api_keys` 表
-- **DB 凭据**：自动从 sub2api `config.yaml` 读取（先尝试 `/root/sub2api/config.yaml`，再尝试 docker volume 路径）
-- **Stats 缓存**：首次请求时计算，行数变化时失效
-
-## 包结构
-
-```
-packages/sub2api-inspector/
-├── pyproject.toml                    # hatchling + uvicorn + fastapi + orjson + pyyaml
-└── src/sub2api_inspector/
-    ├── __init__.py
-    ├── db.py                         # SQLite 只读查询
-    ├── server.py                     # FastAPI + 全部接口
-    └── static/index.html             # 单文件前端
-```
-
-入口命令：`sub2api-inspector`（uv workspace 管理）
+- **统一认证**：使用 Sub2API JWT 认证（所有登录用户可访问，非 admin 专属）
+- **SQLite 只读**：以 WAL 模式并发读写不冲突
+- **归档支持**：通过 `archive_dir` 配置读取历史日期的独立 .db 文件
+- **深度链接**：Usage 页面每条记录可直接跳转到 Inspector 对应条目
 
 ## API 接口
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `GET` | `/` | 前端 HTML |
-| `GET` | `/api/dates` | 可用日期列表 + 文件大小 |
-| `GET` | `/api/logs/{date}/stats` | 当日统计：请求数、按模型/key/session 分组、token 合计 |
-| `GET` | `/api/logs/{date}` | 分页日志列表，支持过滤（session_id、api_key_id、model、q） |
-| `GET` | `/api/logs/{date}/record/{id}` | 按 ID 查完整记录 |
-| `GET` | `/api/logs/{date}/export` | 过滤结果导出 JSONL |
-| `GET` | `/api/keys` | 所有 API Key 列表（id、name、前缀） |
-| `GET` | `/api/keys/lookup?sk=...` | 按 sk- 前缀查 key ID |
-| `POST` | `/api/admin/resync` | 强制从 JSONL 重新同步（可选 `?date=`） |
-
-## 会话 ID 提取逻辑
-
-两种客户端存放 session ID 的位置不同：
-
-| 客户端 | 位置 | 示例 |
-|--------|------|------|
-| Codex（VS Code / Desktop） | `request_headers.session_id` | `019d3ec1-e08f-7561-...` |
-| Claude Code CLI | `request_headers.x-claude-code-session-id` | `6c5a4a8b-c72c-44df-...` |
-| Claude Code CLI（降级） | `request_body.metadata.user_id`（JSON string）→ `.session_id` | 同上 |
-
-`_extract_session()` 按顺序尝试三个位置。
+| `GET` | `/api/v1/inspector/dates` | 可用日期列表 + 记录数（含归档） |
+| `GET` | `/api/v1/inspector/dates/:date/stats` | 当日统计：请求数、按模型/key/session 分组、token 合计 |
+| `GET` | `/api/v1/inspector/dates/:date/logs` | 分页日志列表，支持过滤（session_id、api_key_id、model、q） |
+| `GET` | `/api/v1/inspector/records/:id` | 按 SQLite PK 查完整记录（含 raw_json） |
+| `GET` | `/api/v1/inspector/dates/:date/export` | 过滤结果导出 JSONL |
+| `GET` | `/api/v1/inspector/keys` | 所有 API Key 列表（id、name、前缀） |
 
 ## 前端功能
 
-- **Stats 面板**：请求数、input/output/cached token 合计、session 数、模型分布、Key 分布
+- **Stats 卡片**：请求数、input/output/cached token 合计、session 数
 - **会话快速筛选**：每个 session 的可点击徽章（蓝色=Codex，粉色=Claude Code）
-- **筛选器**：session ID、API Key（带名称下拉）、模型、全文搜索
-- **Key 查找**：输入 `sk-...` 前缀 → 显示 key ID 和名称，一键过滤
-- **请求列表**：时间、Key（带名称）、模型、session 徽章、in/out/cache token、状态
-- **详情面板**：点击任意行 → 右侧面板，含 Full JSON / Headers / Request Body / Response 四个 Tab，支持语法高亮和复制
+- **筛选器**：session ID、API Key（下拉）、模型（下拉）、全文搜索
+- **请求列表**：时间、Key、模型、session 徽章、in/out/cache token、状态
+- **详情面板**：点击任意行 → 右侧面板，含 4 个 Tab：
+  - **Chat**：对话可视化（支持 OpenAI 和 Anthropic 格式，含 reasoning、tool_calls、multimodal）
+  - **JSON Tree**：可折叠交互式 JSON 树，支持复制
+  - **Raw JSON**：格式化 JSON 文本
+  - **Headers**：请求头
 - **导出**：下载过滤结果为 `.jsonl`
 - **分页**：每页 100 条
+- **深度链接**：从 Usage 页面点击 "Inspect" 按钮跳转，自动加载对应日期和记录
 
-## 环境变量
+## 配置
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `INSPECTOR_DB` | 自动探测 `request_log.db` | SQLite 路径 |
-| `CONFIG_PATH` | 自动探测 | sub2api `config.yaml` 路径（用于读 PG 凭据） |
+在 `config.yaml` 的 `gateway.request_log` 下：
 
-## TODO
+```yaml
+gateway:
+  request_log:
+    enabled: true
+    db_path: /app/data/request_logs/request_log.db
+    archive_dir: /apdcephfs/private_easonsshi/data/sub2api_archive/request_logs  # 可选
+```
 
-- [ ] systemd 服务（持久化部署，现在是 nohup）
-- [ ] Token 费用估算（接入模型定价）
-- [ ] 请求量 / token 用量时序图
-- [ ] 大日期 stats 流式返回（避免 multi-GB 文件超时）
-- [ ] 鉴权（basic auth 或 token）
+## 文件位置
+
+### Go 后端
+- `backend/internal/service/request_log_inspector.go` — Inspector 查询方法
+- `backend/internal/handler/inspector_handler.go` — HTTP 处理器（6 个端点）
+- `backend/internal/server/routes/user.go` — 路由注册
+
+### Vue 前端
+- `frontend/src/views/inspector/InspectorView.vue` — 主页面
+- `frontend/src/views/inspector/components/InspectorChatView.vue` — 对话可视化
+- `frontend/src/views/inspector/components/InspectorJsonTree.vue` — JSON 树
+- `frontend/src/views/inspector/lib/messages.ts` — 消息格式归一化（OpenAI + Anthropic）
+- `frontend/src/api/inspector.ts` — API 模块
+
+## 旧版（已归档）
+
+原 Python 实现位于 `.ea/sub2api-inspector/`，仅保留参考，不再部署。

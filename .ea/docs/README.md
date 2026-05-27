@@ -22,7 +22,7 @@ Sub2API 是一个 AI API 网关，把多个 Claude / OpenAI / Gemini 订阅账�
 | 服务 | 地址 |
 |------|------|
 | Sub2API 主服务 | `http://anydev_llmrouter:80` |
-| Inspector 日志查看器 | `http://anydev_llmrouter:8019` |
+| Inspector 日志查看器 | `http://anydev_llmrouter/inspector`（已集成到 Sub2API） |
 | 内网域名 | `sn5llmrouter.devcloud.woa.com` |
 | Youtu LLM Proxy（容器内 sidecar） | `http://127.0.0.1:8088`（仅容器内部） |
 

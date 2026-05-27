@@ -118,5 +118,16 @@ func RegisterUserRoutes(
 			monitors.GET("", h.ChannelMonitor.List)
 			monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
 		}
+
+		// Inspector（请求日志查看器）
+		inspector := authenticated.Group("/inspector")
+		{
+			inspector.GET("/dates", h.Inspector.Dates)
+			inspector.GET("/dates/:date/stats", h.Inspector.DateStats)
+			inspector.GET("/dates/:date/logs", h.Inspector.Logs)
+			inspector.GET("/dates/:date/export", h.Inspector.Export)
+			inspector.GET("/records/:id", h.Inspector.Record)
+			inspector.GET("/keys", h.Inspector.Keys)
+		}
 	}
 }

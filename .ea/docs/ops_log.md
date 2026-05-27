@@ -242,3 +242,17 @@ docker compose up -d sub2api
 - 宿主机 systemd `youtu-llm-proxy.service` 已停用并删除
 
 **其他**：codex 默认模型从 `gpt-5.4` 更新为 `gpt-5.5`（Use Key modal + CCS import）
+
+---
+
+## 2026-05-27：Inspector 集成到 Sub2API
+
+**迁移**：将独立 Python FastAPI Inspector 服务（端口 8019）集成到 Sub2API 主服务。
+
+- **Go 后端**：扩展 `RequestLogReaderService`，新增 6 个 Inspector API 端点（`/api/v1/inspector/`），支持归档数据库读取
+- **Vue 前端**：新增 `/inspector` 页面，含对话可视化（Chat View）、交互式 JSON 树、原始数据查看
+  - 支持 OpenAI 和 Anthropic 两种 API 格式的消息解析与展示
+  - 从 Usage 页面可直接跳转到对应 Inspector 记录（深度链接）
+- **认证**：使用 Sub2API JWT 认证，所有登录用户可访问
+- **配置**：`config.yaml` 中新增 `gateway.request_log.archive_dir` 配置项
+- **清理**：宿主机 systemd `sub2api-inspector.service` 已停用。原 Python 代码保留在 `.ea/sub2api-inspector/` 作为参考
