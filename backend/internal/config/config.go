@@ -894,8 +894,9 @@ type GatewayUsageRecordConfig struct {
 // GatewayRequestLogConfig 请求/响应日志配置（SQLite 数据库）
 type GatewayRequestLogConfig struct {
 	Enabled        bool     `mapstructure:"enabled"`
-	Dir            string   `mapstructure:"dir"`     // base directory (kept for backward compat)
-	DbPath         string   `mapstructure:"db_path"` // SQLite DB path, default: {Dir}/request_log.db
+	Dir            string   `mapstructure:"dir"`         // base directory (kept for backward compat)
+	DbPath         string   `mapstructure:"db_path"`     // SQLite DB path, default: {Dir}/request_log.db
+	ArchiveDir     string   `mapstructure:"archive_dir"` // per-day archive .db files directory
 	Platforms      []string `mapstructure:"platforms"`
 	ExcludedGroups []string `mapstructure:"excluded_groups"`
 }
