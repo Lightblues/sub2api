@@ -1,5 +1,5 @@
 <template>
-  <div v-if="block.type === 'text'">
+  <div v-if="block.type === 'text' || block.type === 'input_text' || block.type === 'output_text'">
     <div
       class="whitespace-pre-wrap font-mono text-xs leading-relaxed text-gray-800 break-all dark:text-gray-200"
       :class="{ 'max-h-[100px] overflow-hidden': !expanded && text.length >= 1000 }"
@@ -15,7 +15,7 @@
     </button>
   </div>
 
-  <div v-else-if="block.type === 'image_url'" class="inline-flex flex-col rounded border border-gray-200 bg-gray-50 p-1.5 dark:border-gray-700 dark:bg-gray-900">
+  <div v-else-if="block.type === 'image_url' || block.type === 'input_image'" class="inline-flex flex-col rounded border border-gray-200 bg-gray-50 p-1.5 dark:border-gray-700 dark:bg-gray-900">
     <img
       v-if="imageUrl && /^(https?:|data:)/.test(imageUrl)"
       :src="imageUrl"
@@ -24,7 +24,7 @@
       loading="lazy"
     />
     <div v-else class="font-mono text-[11px] text-gray-500 dark:text-gray-400">
-      [image_url] {{ shortenUrl(imageUrl) }}
+      [image] {{ shortenUrl(imageUrl) }}
     </div>
   </div>
 
@@ -52,7 +52,18 @@ const props = defineProps<{ block: ContentBlock }>()
 const expanded = ref(false)
 
 const text = computed(() => (props.block as { text?: string }).text ?? '')
-const imageUrl = computed(() => (props.block as { image_url?: { url: string } }).image_url?.url ?? '')
+
+// Anthropic image_url is { url }, OpenAI Responses input_image is { image_url: string }
+const imageUrl = computed(() => {
+  const b = props.block as Record<string, unknown>
+  const iu = b.image_url
+  if (typeof iu === 'string') return iu
+  if (iu && typeof iu === 'object') {
+    const url = (iu as { url?: string }).url
+    return typeof url === 'string' ? url : ''
+  }
+  return ''
+})
 
 function shortenUrl(u: string): string {
   if (u.length <= 80) return u
