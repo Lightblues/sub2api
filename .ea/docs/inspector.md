@@ -41,7 +41,7 @@ Browser ──→ Vue SPA /inspector ──→ Go Backend /api/v1/inspector/*
 - **筛选器**：session ID、API Key（下拉）、模型（下拉）、全文搜索
 - **请求列表**：时间、Key、模型、session 徽章、in/out/cache token、状态
 - **详情面板**：点击任意行 → 右侧面板，含 4 个 Tab：
-  - **Chat**：对话可视化（支持 OpenAI 和 Anthropic 格式，含 reasoning、tool_calls、multimodal）
+  - **Chat**：对话可视化（支持 OpenAI ChatCompletions、Anthropic Messages、OpenAI Responses 三种格式；含 reasoning、tool_calls、multimodal）
   - **JSON Tree**：可折叠交互式 JSON 树，支持复制
   - **Raw JSON**：格式化 JSON 文本
   - **Headers**：请求头
@@ -72,7 +72,12 @@ gateway:
 - `frontend/src/views/inspector/InspectorView.vue` — 主页面
 - `frontend/src/views/inspector/components/InspectorChatView.vue` — 对话可视化
 - `frontend/src/views/inspector/components/InspectorJsonTree.vue` — JSON 树
-- `frontend/src/views/inspector/lib/messages.ts` — 消息格式归一化（OpenAI + Anthropic）
+- `frontend/src/views/inspector/lib/messages.ts` — 消息格式归一化
+  - `normalizeMessages(requestBody)` 自动识别请求格式：
+    - **ChatCompletions**：`messages[]`（无 Anthropic block）
+    - **Anthropic**：`messages[]` + 含 `tool_use`/`tool_result`/`thinking` blocks
+    - **Responses**：`input` (string 或 items[])，识别 `function_call` / `function_call_output` / `reasoning` / 角色消息（`input_text`/`output_text`/`input_image`），归一化为 user/assistant/tool 三角色
+  - `extractResponseOutput(record)` 解析 `response_complete.response.output[]`（Responses）/ `response_body.choices[]`（ChatCompletions）/ `response_complete.content[]`（Anthropic）三种响应格式
 - `frontend/src/api/inspector.ts` — API 模块
 
 ## 旧版（已归档）

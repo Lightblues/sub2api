@@ -9,6 +9,10 @@ export type ContentBlock =
   | { type: 'tool_use'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; tool_use_id: string; content: unknown }
   | { type: 'thinking'; thinking: string }
+  // OpenAI Responses API content parts (kept as-is; rendered in InspectorContentBlock)
+  | { type: 'input_text'; text: string }
+  | { type: 'output_text'; text: string }
+  | { type: 'input_image'; image_url: string }
   | { type: string; [k: string]: unknown }
 
 export type MessageContent = string | ContentBlock[] | null | undefined
@@ -39,9 +43,12 @@ export function contentToText(content: MessageContent): string {
   const parts: string[] = []
   for (const b of content) {
     if (!b || typeof b !== 'object') continue
-    if (b.type === 'text' && typeof (b as { text?: string }).text === 'string') {
+    if (
+      (b.type === 'text' || b.type === 'input_text' || b.type === 'output_text') &&
+      typeof (b as { text?: string }).text === 'string'
+    ) {
       parts.push((b as { text: string }).text)
-    } else if (b.type === 'image_url') {
+    } else if (b.type === 'image_url' || b.type === 'input_image') {
       parts.push('[image]')
     } else if (b.type === 'tool_use') {
       const tu = b as { name?: string }
@@ -158,8 +165,20 @@ export function extractResponseOutput(record: Record<string, unknown>): Normaliz
 /**
  * Detect if a request body uses Anthropic format and normalize messages
  * to a unified shape for the ChatView component.
+ *
+ * Supported request shapes:
+ *  - OpenAI ChatCompletions: { messages: [...] }
+ *  - Anthropic Messages:     { system?, messages: [...with tool_use/tool_result/thinking blocks] }
+ *  - OpenAI Responses:       { instructions?, input: string | [...input items] }
  */
 export function normalizeMessages(requestBody: Record<string, unknown>): NormalizedMessage[] | null {
+  if (!requestBody || typeof requestBody !== 'object') return null
+
+  // OpenAI Responses API: top-level "input" instead of "messages".
+  if (!Array.isArray(requestBody.messages) && (typeof requestBody.input === 'string' || Array.isArray(requestBody.input))) {
+    return normalizeResponsesInput(requestBody)
+  }
+
   const messages = requestBody?.messages
   if (!Array.isArray(messages)) return null
 
@@ -282,4 +301,158 @@ export function normalizeMessages(requestBody: Record<string, unknown>): Normali
   }
 
   return result
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI Responses API request normalization
+// ---------------------------------------------------------------------------
+
+/**
+ * Normalize a Responses API request body to a unified message list.
+ *
+ * Responses input items can be:
+ *   - role-based message: { role, content: string | ResponsesContentPart[] }
+ *     where part.type ∈ {input_text, output_text, input_image}
+ *   - { type: "function_call", call_id, name, arguments }
+ *     -> rendered as an assistant message with tool_calls (also flushes pending assistant text)
+ *   - { type: "function_call_output", call_id, output }
+ *     -> rendered as a "tool" role message
+ *   - { type: "reasoning", summary: [{type:"summary_text", text}], encrypted_content? }
+ *     -> attached as reasoning_content to the next assistant message (or its own assistant message)
+ *
+ * `instructions` (top-level) is treated as a system message if present.
+ */
+function normalizeResponsesInput(requestBody: Record<string, unknown>): NormalizedMessage[] {
+  const result: NormalizedMessage[] = []
+
+  const instructions = requestBody.instructions
+  if (typeof instructions === 'string' && instructions) {
+    result.push({ role: 'system', content: instructions })
+  }
+
+  const input = requestBody.input
+  if (typeof input === 'string') {
+    if (input) result.push({ role: 'user', content: input })
+    return result
+  }
+  if (!Array.isArray(input)) return result
+
+  let pendingReasoning: string | null = null
+
+  for (const raw of input as Array<Record<string, unknown>>) {
+    if (!raw || typeof raw !== 'object') continue
+    const type = (raw.type as string) || ''
+
+    // Role-based message ("" type or explicit role)
+    if (!type || type === 'message') {
+      const role = (raw.role as string) || 'user'
+      const content = normalizeResponsesContent(raw.content)
+      const msg: NormalizedMessage = { role, content }
+      if (role === 'assistant' && pendingReasoning) {
+        msg.reasoning_content = pendingReasoning
+        pendingReasoning = null
+      }
+      result.push(msg)
+      continue
+    }
+
+    if (type === 'function_call') {
+      const callId = (raw.call_id as string) || (raw.id as string) || ''
+      const name = (raw.name as string) || ''
+      const args = (raw.arguments as string) || ''
+      const toolCall: ToolCall = {
+        id: callId,
+        type: 'function',
+        function: { name, arguments: args }
+      }
+      // Try to merge with the previous assistant message if it has no tool_calls yet
+      // (Responses streams may emit text + function_call in the same logical turn).
+      const last = result[result.length - 1]
+      if (last && last.role === 'assistant' && !last.tool_calls) {
+        last.tool_calls = [toolCall]
+      } else if (last && last.role === 'assistant' && last.tool_calls) {
+        last.tool_calls.push(toolCall)
+      } else {
+        const msg: NormalizedMessage = { role: 'assistant', tool_calls: [toolCall] }
+        if (pendingReasoning) {
+          msg.reasoning_content = pendingReasoning
+          pendingReasoning = null
+        }
+        result.push(msg)
+      }
+      continue
+    }
+
+    if (type === 'function_call_output') {
+      const callId = (raw.call_id as string) || ''
+      const output = (raw.output as string) || ''
+      result.push({ role: 'tool', tool_call_id: callId, content: output })
+      continue
+    }
+
+    if (type === 'reasoning') {
+      const summary = raw.summary as Array<Record<string, unknown>> | undefined
+      let text = ''
+      if (Array.isArray(summary)) {
+        text = summary
+          .filter((s) => s.type === 'summary_text' && typeof s.text === 'string')
+          .map((s) => s.text as string)
+          .join('\n')
+      }
+      // Buffer reasoning to attach onto the next assistant message
+      if (text) {
+        pendingReasoning = pendingReasoning ? pendingReasoning + '\n' + text : text
+      } else if (typeof raw.encrypted_content === 'string' && raw.encrypted_content) {
+        // Surface encrypted reasoning as an opaque marker so the user knows it exists
+        const marker = `[encrypted reasoning: ${(raw.encrypted_content as string).length} chars]`
+        pendingReasoning = pendingReasoning ? pendingReasoning + '\n' + marker : marker
+      }
+      continue
+    }
+
+    // Unknown item type — surface as a raw block so it's still visible
+    result.push({ role: 'system', content: `[${type}]\n` + JSON.stringify(raw, null, 2) })
+  }
+
+  // If we had trailing reasoning with no following assistant message, emit it as one.
+  if (pendingReasoning) {
+    result.push({ role: 'assistant', reasoning_content: pendingReasoning })
+  }
+
+  return result
+}
+
+/**
+ * Convert a Responses API message content (string or content-part array) to the
+ * unified MessageContent shape used by NormalizedMessage.
+ *
+ * input_text/output_text -> {type: 'text', text}
+ * input_image            -> {type: 'image_url', image_url: {url}}
+ * unknown                -> kept as-is (rendered via the generic branch)
+ */
+function normalizeResponsesContent(raw: unknown): MessageContent {
+  if (raw == null) return ''
+  if (typeof raw === 'string') return raw
+  if (!Array.isArray(raw)) return ''
+
+  const blocks: ContentBlock[] = []
+  for (const part of raw as Array<Record<string, unknown>>) {
+    if (!part || typeof part !== 'object') continue
+    const t = part.type as string
+    if (t === 'input_text' || t === 'output_text' || t === 'text') {
+      const text = typeof part.text === 'string' ? part.text : ''
+      blocks.push({ type: 'text', text })
+    } else if (t === 'input_image') {
+      const url = typeof part.image_url === 'string' ? part.image_url : ''
+      blocks.push({ type: 'image_url', image_url: { url } })
+    } else {
+      blocks.push({ type: t || 'unknown', ...part } as ContentBlock)
+    }
+  }
+
+  // Collapse to a plain string when every block is text — it renders nicer.
+  if (blocks.every((b) => b.type === 'text')) {
+    return blocks.map((b) => (b as { text: string }).text).join('\n')
+  }
+  return blocks
 }

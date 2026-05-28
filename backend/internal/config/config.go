@@ -677,6 +677,9 @@ type GatewayConfig struct {
 	ImageStreamDataIntervalTimeout int `mapstructure:"image_stream_data_interval_timeout"`
 	// ImageStreamKeepaliveInterval: 图片流式 keepalive 间隔（秒），0表示禁用
 	ImageStreamKeepaliveInterval int `mapstructure:"image_stream_keepalive_interval"`
+	// GroupFirstTokenTimeoutSeconds: 按分组名配置首 token（非 preamble）最大等待秒数；0 或未配置表示不启用。
+	// 仅影响 OpenAI /v1/responses 流式路径，用于切断上游排队导致的长 TTFT。
+	GroupFirstTokenTimeoutSeconds map[string]int `mapstructure:"group_first_token_timeout_seconds"`
 	// MaxLineSize: 上游 SSE 单行最大字节数（0使用默认值）
 	MaxLineSize int `mapstructure:"max_line_size"`
 

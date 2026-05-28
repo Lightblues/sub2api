@@ -14,6 +14,7 @@ Sub2API 是一个 AI API 网关，把多个 Claude / OpenAI / Gemini 订阅账�
 | [inspector.md](./inspector.md) | Web 日志查看器：架构、API、会话识别、前端功能 |
 | [运维日志.md](./运维日志.md) | 部署历史、踩坑记录、当前账号/用户状态 |
 | [chatcompletions代理.md](./chatcompletions代理.md) | 调研：用 ChatCompletions 后端接 Claude Code，开源方案对比 + 自研设计 |
+| [ttft_timeout.md](./ttft_timeout.md) | 首 Token 超时（TTFT）：背景、调研、实现与运维（`ian_private` 15s） |
 
 ## 快速参考
 
