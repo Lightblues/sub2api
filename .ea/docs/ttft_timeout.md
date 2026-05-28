@@ -85,7 +85,7 @@ gateway:
 | `backend/internal/service/openai_stream_ttft_timeout.go` | 配置解析、`openAIGroupFirstTokenTimeout()` |
 | `backend/internal/service/openai_gateway_service.go` | `handleStreamingResponse`：select 循环增加 `ttftCh` |
 | 同上 | `handleStreamingResponsePassthrough`：TTFT>0 时走 goroutine+select |
-| `backend/internal/service/openai_stream_ttft_timeout_test.go` | 单元测试 |
+| `backend/internal/service/openai_stream_ttft_timeout_test.go` | 单元测试（含 happy path 与 passthrough 路径） |
 
 ### 路径覆盖
 
@@ -98,16 +98,7 @@ gateway:
 
 ### 生效方式
 
-修改 `config.yaml` 后重建并重启：
-
-```bash
-cd /root/sub2api
-# 编辑 config.yaml 中 group_first_token_timeout_seconds
-docker build -t sub2api:eason -f Dockerfile .
-docker compose up -d sub2api
-```
-
-无需数据库迁移。
+修改 `config.yaml` 中 `gateway.group_first_token_timeout_seconds` 后重建并重启容器（具体命令见 [`ops_log.md`](./ops_log.md) 的部署小节）。无需数据库迁移；该字段为热配置项，但当前实现未支持 reload，需重启服务。
 
 ### 调参建议
 
@@ -124,26 +115,45 @@ docker compose up -d sub2api
 超时时会打印（legacy log）：
 
 ```
-First token timeout: account=<id> model=<model> timeout=15s
+First token timeout: account=<id> group=<name> model=<model> timeout=15s elapsed=15s upstream_request_id=<rid>
 ```
 
-Passthrough 路径前缀为 `[OpenAI passthrough] First token timeout: ...`。
+Passthrough 路径前缀为 `[OpenAI passthrough] First token timeout: ...`，字段一致。
+
+字段说明：
+- `account` — 上游账号 ID
+- `group` — API Key 关联的分组名（便于过滤特定分组的拦截事件）
+- `model` — 客户端请求的原始模型名（未 mapping）
+- `timeout` — 该分组配置的 TTFT 阈值
+- `elapsed` — 从 `startTime` 到触发拦截的实际耗时（理论上 ≈ `timeout`，偏差大说明计时器漂移或 select 抢占慢）
+- `upstream_request_id` — 上游 `x-request-id`，用于和上游日志/账单对账（OAuth 账号上常缺失，为空字符串）
 
 ### 验证
 
 ```bash
-# 单元测试（需 Go 1.26+）
-cd backend && go test ./internal/service/ -run 'TestGroupFirstTokenTimeout|TestOpenAIStreamingFirstTokenTimeout' -count=1
+# 单元测试（需 Go 1.26+；环境变量 GOTOOLCHAIN=auto 可让 Go 自动下载工具链）
+cd backend && GOTOOLCHAIN=auto go test ./internal/service/ -run 'FirstToken' -count=1
 ```
+
+涵盖用例：
+- `TestGroupFirstTokenTimeout` — 配置查表
+- `TestOpenAIStreamingFirstTokenTimeout` — non-passthrough 超时触发
+- `TestOpenAIStreamingFirstTokenArrivedInTime` — non-passthrough 在阈值内首 token 到达，验证 timer 已被关闭、不会误杀后续长生成
+- `TestOpenAIStreamingFirstTokenTimeoutDisabledForOtherGroups` — 其他分组不触发
+- `TestOpenAIStreamingPassthroughFirstTokenTimeout` — passthrough 路径超时触发
+- `TestOpenAIStreamingPassthroughFirstTokenArrivedInTime` — passthrough 路径在阈值内首 token 到达不误杀
 
 线上观察：Usage 页 `first_token_ms` 分布、Claude Code 侧是否出现快速失败+重试而非 100s+ 挂起。
 
 ## 限制与后续
 
-1. **无账号 failover**：`ian_private` 仅 1 账号，超时后依赖**客户端重试**新请求，不会在网关内切换账号。
+1. **无账号 failover**：`ian_private` 仅 1 账号，超时后依赖**客户端重试**新请求，不会在网关内切换账号。即使存在多账号，超时点上游已写出 200 SSE header，failover 易导致协议混乱，因此实现选择"不 failover、由客户端重试"。
 2. **不计费**：`Forward` 失败且 `result==nil` 时不写 usage，首 token 前超时通常无 token 计费。
-3. **preamble 心跳**：若上游持续发送 `response.in_progress` 但不发实质 output，仍会在 15s 触发超时（符合「排队过久即失败」意图）。
-4. **可选后续**：管理后台可配置分组 TTFT；Ops 指标对 `first_token_timeout` 单独计数。
+3. **preamble 心跳**：若上游持续发送 `response.created` / `response.in_progress` 但不发实质 output，仍会在阈值触发超时（符合「排队过久即失败」意图）。SSE 注释行（如 `: ping`）也不会重置 TTFT 计时器，行为符合预期。
+4. **可选后续**：
+   - 管理后台可配置分组 TTFT（目前仅 yaml 静态配置）
+   - Ops 指标对 `first_token_timeout` 单独计数：当前 `handleFirstTokenTimeout` 未调用 `appendOpsUpstreamError`，下一迭代可补上 `Kind:"first_token_timeout"`，便于看板观测拦截率
+   - 配置热 reload（当前需重启容器）
 
 ## 相关文档
 

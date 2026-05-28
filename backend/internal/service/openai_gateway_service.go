@@ -3600,10 +3600,13 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		}
 		logger.LegacyPrintf(
 			"service.openai_gateway",
-			"[OpenAI passthrough] First token timeout: account=%d model=%s timeout=%s",
+			"[OpenAI passthrough] First token timeout: account=%d group=%s model=%s timeout=%s elapsed=%s upstream_request_id=%s",
 			account.ID,
+			openAIRequestGroupName(c),
 			originalModel,
 			ttftTimeout,
+			time.Since(startTime).Round(time.Millisecond),
+			upstreamRequestID,
 		)
 		sendPassthroughErrorEvent(openAIFirstTokenTimeoutErrorCode)
 		return resultWithUsage(), fmt.Errorf("first token timeout")
@@ -4504,10 +4507,13 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		}
 		logger.LegacyPrintf(
 			"service.openai_gateway",
-			"First token timeout: account=%d model=%s timeout=%s",
+			"First token timeout: account=%d group=%s model=%s timeout=%s elapsed=%s upstream_request_id=%s",
 			account.ID,
+			openAIRequestGroupName(c),
 			originalModel,
 			ttftTimeout,
+			time.Since(startTime).Round(time.Millisecond),
+			upstreamRequestID,
 		)
 		sendErrorEvent(openAIFirstTokenTimeoutErrorCode)
 		return resultWithUsage(), fmt.Errorf("first token timeout")

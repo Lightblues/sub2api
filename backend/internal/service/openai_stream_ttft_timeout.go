@@ -32,6 +32,12 @@ func (s *OpenAIGatewayService) openAIGroupFirstTokenTimeout(c *gin.Context) time
 	return groupFirstTokenTimeout(s.cfg, apiKey.Group.Name)
 }
 
-func openAIFirstTokenTimeoutPending(firstTokenMs *int, timeout time.Duration, startTime time.Time) bool {
-	return timeout > 0 && firstTokenMs == nil && time.Since(startTime) >= timeout
+// openAIRequestGroupName returns the resolved group name from the request context, "" if absent.
+// Used for observability (logs/metrics) so operators can filter by group.
+func openAIRequestGroupName(c *gin.Context) string {
+	apiKey := getAPIKeyFromContext(c)
+	if apiKey == nil || apiKey.Group == nil {
+		return ""
+	}
+	return apiKey.Group.Name
 }
