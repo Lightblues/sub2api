@@ -3560,8 +3560,61 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		return &openaiStreamingResultPassthrough{usage: usage, firstTokenMs: firstTokenMs, imageCount: imageCounter.Count(), completedEventData: completedEventData}
 	}
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	ttftTimeout := s.openAIGroupFirstTokenTimeout(c)
+	var ttftTimer *time.Timer
+	if ttftTimeout > 0 {
+		ttftTimer = time.NewTimer(ttftTimeout)
+		defer ttftTimer.Stop()
+	}
+	stopPassthroughTTFTTimer := func() {
+		if ttftTimer == nil {
+			return
+		}
+		if !ttftTimer.Stop() {
+			select {
+			case <-ttftTimer.C:
+			default:
+			}
+		}
+		ttftTimer = nil
+	}
+	sendPassthroughErrorEvent := func(reason string) {
+		if clientDisconnected || openAIStreamClientOutputStarted(c, clientOutputStarted) {
+			return
+		}
+		payload := `{"type":"error","sequence_number":0,"error":{"type":"upstream_error","message":` + strconv.Quote(reason) + `,"code":` + strconv.Quote(reason) + `}}`
+		if _, err := fmt.Fprintf(w, "data: %s\n\n", payload); err != nil {
+			clientDisconnected = true
+			return
+		}
+		flusher.Flush()
+		clientOutputStarted = true
+	}
+	handlePassthroughFirstTokenTimeout := func() (*openaiStreamingResultPassthrough, error) {
+		if firstTokenMs != nil {
+			return nil, nil
+		}
+		_ = resp.Body.Close()
+		if clientDisconnected {
+			return resultWithUsage(), fmt.Errorf("stream usage incomplete after first token timeout")
+		}
+		logger.LegacyPrintf(
+			"service.openai_gateway",
+			"[OpenAI passthrough] First token timeout: account=%d model=%s timeout=%s",
+			account.ID,
+			originalModel,
+			ttftTimeout,
+		)
+		sendPassthroughErrorEvent(openAIFirstTokenTimeoutErrorCode)
+		return resultWithUsage(), fmt.Errorf("first token timeout")
+	}
+
+	var passthroughEarlyResult *openaiStreamingResultPassthrough
+	var passthroughEarlyErr error
+	processPassthroughLine := func(line string) bool {
+		if passthroughEarlyErr != nil || passthroughEarlyResult != nil {
+			return true
+		}
 		lineStartsClientOutput := false
 		forceFlushFailedEvent := false
 		if data, ok := extractOpenAISSEDataLine(line); ok {
@@ -3578,8 +3631,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			if eventType == "response.failed" {
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
 				if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
-					return resultWithUsage(),
-						s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
+					passthroughEarlyResult = resultWithUsage()
+					passthroughEarlyErr = s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
+					return true
 				}
 				forceFlushFailedEvent = true
 				sawFailedEvent = true
@@ -3595,6 +3649,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			if firstTokenMs == nil && lineStartsClientOutput && trimmedData != "[DONE]" {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
+				stopPassthroughTTFTTimer()
 			}
 			s.parseSSEUsageBytes(dataBytes, usage)
 			if trimmedData != "[DONE]" && trimmedData != "" {
@@ -3614,11 +3669,11 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		if !clientDisconnected {
 			if !clientOutputStarted && !lineStartsClientOutput {
 				pendingLines = append(pendingLines, line)
-				continue
+				return false
 			}
 			if !clientOutputStarted && len(pendingLines) > 0 {
 				if !writePendingLines() {
-					continue
+					return false
 				}
 			}
 			if _, err := fmt.Fprintln(w, line); err != nil {
@@ -3629,8 +3684,81 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				flusher.Flush()
 			}
 		}
+		return false
 	}
-	if err := scanner.Err(); err != nil {
+
+	runPassthroughScannerSync := func() error {
+		for scanner.Scan() {
+			if processPassthroughLine(scanner.Text()) {
+				return nil
+			}
+		}
+		return scanner.Err()
+	}
+
+	var scanErr error
+	if ttftTimeout <= 0 {
+		scanErr = runPassthroughScannerSync()
+	} else {
+		type scanEvent struct {
+			line string
+			err  error
+		}
+		events := make(chan scanEvent, 16)
+		done := make(chan struct{})
+		sendEvent := func(ev scanEvent) bool {
+			select {
+			case events <- ev:
+				return true
+			case <-done:
+				return false
+			}
+		}
+		go func() {
+			defer close(events)
+			for scanner.Scan() {
+				if !sendEvent(scanEvent{line: scanner.Text()}) {
+					return
+				}
+			}
+			if err := scanner.Err(); err != nil {
+				_ = sendEvent(scanEvent{err: err})
+			}
+		}()
+		defer close(done)
+
+		ttftCh := ttftTimer.C
+	scanLoop:
+		for {
+			select {
+			case ev, ok := <-events:
+				if !ok {
+					break scanLoop
+				}
+				if ev.err != nil {
+					scanErr = ev.err
+					break scanLoop
+				}
+				if processPassthroughLine(ev.line) {
+					break scanLoop
+				}
+			case <-ttftCh:
+				if firstTokenMs != nil {
+					continue
+				}
+				passthroughEarlyResult, passthroughEarlyErr = handlePassthroughFirstTokenTimeout()
+				break scanLoop
+			}
+		}
+	}
+
+	if passthroughEarlyErr != nil || passthroughEarlyResult != nil {
+		if passthroughEarlyResult == nil {
+			passthroughEarlyResult = resultWithUsage()
+		}
+		return passthroughEarlyResult, passthroughEarlyErr
+	}
+	if err := scanErr; err != nil {
 		if sawTerminalEvent && !sawFailedEvent {
 			return resultWithUsage(), nil
 		}
@@ -4298,6 +4426,16 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	if keepaliveTicker != nil {
 		keepaliveCh = keepaliveTicker.C
 	}
+
+	ttftTimeout := s.openAIGroupFirstTokenTimeout(c)
+	var ttftTimer *time.Timer
+	var ttftCh <-chan time.Time
+	if ttftTimeout > 0 {
+		ttftTimer = time.NewTimer(ttftTimeout)
+		defer ttftTimer.Stop()
+		ttftCh = ttftTimer.C
+	}
+
 	// Track downstream writes separately from upstream reads: pre-output failover
 	// can buffer response.created / response.in_progress, so keepalive must be
 	// based on downstream idle time.
@@ -4340,6 +4478,39 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	resultWithUsage := func() *openaiStreamingResult {
 		completedEventData = patchCompletedEventDataOutput(completedEventData, reqLogAcc)
 		return &openaiStreamingResult{usage: usage, firstTokenMs: firstTokenMs, imageCount: imageCounter.Count(), completedEventData: completedEventData}
+	}
+	stopTTFTTimer := func() {
+		if ttftTimer == nil {
+			return
+		}
+		if !ttftTimer.Stop() {
+			select {
+			case <-ttftTimer.C:
+			default:
+			}
+		}
+		ttftTimer = nil
+		ttftCh = nil
+	}
+	handleFirstTokenTimeout := func(closeUpstream bool) (*openaiStreamingResult, error) {
+		if firstTokenMs != nil {
+			return nil, nil
+		}
+		if closeUpstream {
+			_ = resp.Body.Close()
+		}
+		if clientDisconnected {
+			return resultWithUsage(), fmt.Errorf("stream usage incomplete after first token timeout")
+		}
+		logger.LegacyPrintf(
+			"service.openai_gateway",
+			"First token timeout: account=%d model=%s timeout=%s",
+			account.ID,
+			originalModel,
+			ttftTimeout,
+		)
+		sendErrorEvent(openAIFirstTokenTimeoutErrorCode)
+		return resultWithUsage(), fmt.Errorf("first token timeout")
 	}
 	finalizeStream := func() (*openaiStreamingResult, error) {
 		if !sawTerminalEvent {
@@ -4473,6 +4644,7 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			if firstTokenMs == nil && startsClientOutput {
 				ms := int(time.Since(startTime).Milliseconds())
 				firstTokenMs = &ms
+				stopTTFTTimer()
 			}
 			s.parseSSEUsageBytes(dataBytes, usage)
 			if data != "[DONE]" && data != "" {
@@ -4510,8 +4682,8 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 		}
 	}
 
-	// 无超时/无 keepalive 的常见路径走同步扫描，减少 goroutine 与 channel 开销。
-	if streamInterval <= 0 && keepaliveInterval <= 0 {
+	// 无超时/无 keepalive/无首 token 限制的常见路径走同步扫描，减少 goroutine 与 channel 开销。
+	if streamInterval <= 0 && keepaliveInterval <= 0 && ttftTimeout <= 0 {
 		defer putSSEScannerBuf64K(scanBuf)
 		for scanner.Scan() {
 			processSSELine(scanner.Text(), true)
@@ -4586,6 +4758,14 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			}
 			sendErrorEvent("stream_timeout")
 			return resultWithUsage(), fmt.Errorf("stream data interval timeout")
+
+		case <-ttftCh:
+			if firstTokenMs != nil {
+				continue
+			}
+			if result, err := handleFirstTokenTimeout(true); err != nil {
+				return result, err
+			}
 
 		case <-keepaliveCh:
 			if clientDisconnected {

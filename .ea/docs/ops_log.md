@@ -245,6 +245,18 @@ docker compose up -d sub2api
 
 ---
 
+## 2026-05-27：ian_private 首 Token 超时（TTFT）
+
+**背景**：`ian_private` 约 3% 请求 TTFT > 15s，极端可达 100s+（疑似上游排队），首 token 后速度正常。
+
+**实现**：按分组配置 `gateway.group_first_token_timeout_seconds.ian_private: 15`。从请求开始计时，直到第一个非 preamble SSE 事件；超时则关闭上游、返回 `first_token_timeout` 错误，触发下游重试。
+
+**范围**：仅 `ian_private`；不影响 `stream_data_interval_timeout`（180s）及其他分组。
+
+详见 [ttft_timeout.md](./ttft_timeout.md)。
+
+---
+
 ## 2026-05-27：Inspector 集成到 Sub2API
 
 **迁移**：将独立 Python FastAPI Inspector 服务（端口 8019）集成到 Sub2API 主服务。

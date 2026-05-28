@@ -342,6 +342,11 @@ gateway:
   # Concurrency slot expiration time (minutes)
   # 并发槽位过期时间（分钟）
   concurrency_slot_ttl_minutes: 30
+  # Per-group first token (TTFT) timeout (seconds); 0 or omitted = disabled for that group.
+  # 按分组配置首 token 最大等待时间（秒）；未配置表示不限制。
+  # Only counts non-preamble SSE events (response.created / in_progress are ignored).
+  group_first_token_timeout_seconds:
+    ian_private: 15
   # Stream data interval timeout (seconds), 0=disable
   # 流数据间隔超时（秒），0=禁用
   stream_data_interval_timeout: 180
