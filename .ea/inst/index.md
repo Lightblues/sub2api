@@ -17,6 +17,10 @@
   - 在线服务: [doc](https://cloud.tencent.com/document/product/851/74141)
   - 开发机: [console](https://console.cloud.tencent.com/tione/v2/notebook/list?listTab=instance&regionId=102&workspaceId=0)
   - 镜像仓库: 中卫 [shennong/eason-ubuntu-base](https://console.cloud.tencent.com/tcr/repository/ccr/ccr/shennong/eason-ubuntu-base/102/tagList)
+- https
+  - `sn5llmrouter.devcloud.woa.com` 只是在办公网/devcloud 网络下有效
+  - https 证书由 AIO forward 签发; 但是只是针对了办公网; 而 devcloud 环境下只能通过 http 连接
+  - 想要走 http 的话, 只能 1. 在服务侧使用 caddy 作为反向代理; 2. 在使用的机器上安装证书信任.
 
 
 [todo]
