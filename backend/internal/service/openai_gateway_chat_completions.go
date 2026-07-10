@@ -58,6 +58,11 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	promptCacheKey string,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
+	// [custom] request_log: stash the pre-conversion Chat Completions request body
+	if c != nil && s.shouldLogRequest(c) && len(body) > 0 {
+		snapshot := append([]byte(nil), body...)
+		c.Set("request_log.original_body", snapshot)
+	}
 	restrictionResult := s.detectCodexClientRestriction(c, account, body)
 	logCodexCLIOnlyDetection(ctx, c, account, getAPIKeyIDFromContext(c), restrictionResult, body)
 	if restrictionResult.Enabled && !restrictionResult.Matched {
@@ -396,6 +401,23 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		return nil, err
 	}
 
+	// [custom] request_log: on function exit, if we have a finalResponse and logging is enabled,
+	// serialize it as the reconstructed response and write asynchronously.
+	defer func() {
+		if !s.shouldLogRequest(c) || finalResponse == nil {
+			return
+		}
+		origBody := originalRequestBodyFromContext(c)
+		if len(origBody) == 0 {
+			return
+		}
+		respJSON, mErr := json.Marshal(finalResponse)
+		if mErr != nil || len(respJSON) == 0 {
+			return
+		}
+		go s.writeRequestLog(c, origBody, respJSON)
+	}()
+
 	if finalResponse == nil {
 		writeChatCompletionsError(c, http.StatusBadGateway, "api_error", "Upstream stream ended without a terminal response event")
 		return nil, fmt.Errorf("upstream stream ended without terminal event")
@@ -499,6 +521,27 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	var streamFailoverErr *UpstreamFailoverError
 	var streamNonFailoverErr error
 
+	// [custom] request_log: capture terminal event payload for async logging.
+	// A defer at function scope flushes it out on ANY return path (happy path,
+	// error, timeout), so we don't have to touch each return site individually.
+	var lastTerminalEvent []byte
+	captureTerminalEventIfLogging := func(payload []byte) {
+		if !s.shouldLogRequest(c) || len(payload) == 0 {
+			return
+		}
+		lastTerminalEvent = append(lastTerminalEvent[:0], payload...)
+	}
+	defer func() {
+		if !s.shouldLogRequest(c) || len(lastTerminalEvent) == 0 {
+			return
+		}
+		origBody := originalRequestBodyFromContext(c)
+		if len(origBody) == 0 {
+			return
+		}
+		go s.writeRequestLog(c, origBody, lastTerminalEvent)
+	}()
+
 	scanner := s.newUpstreamSSEScanner(resp.Body)
 
 	streamInterval := time.Duration(0)
@@ -553,6 +596,8 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			if event.Response != nil && event.Response.Usage != nil {
 				usage = copyOpenAIUsageFromResponsesUsage(event.Response.Usage)
 			}
+			// [custom] request_log: capture the terminal event payload for later async write
+			captureTerminalEventIfLogging([]byte(payload))
 		}
 		if strings.TrimSpace(event.Type) == "response.failed" {
 			payloadBytes := []byte(payload)
