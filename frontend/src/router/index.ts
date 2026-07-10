@@ -231,6 +231,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    // [custom] Inspector 请求日志可视化
+    path: '/inspector',
+    name: 'Inspector',
+    component: () => import('@/views/inspector/InspectorView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Inspector'
+    }
+  },
+  {
     path: '/redeem',
     name: 'Redeem',
     component: () => import('@/views/user/RedeemView.vue'),

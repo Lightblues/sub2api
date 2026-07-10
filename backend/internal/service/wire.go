@@ -557,6 +557,9 @@ func ProvideAPIKeyService(
 
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
+	// [custom] request_log reader for the Inspector handler
+	NewRequestLogReaderService,
+
 	// Core services
 	NewAuthService,
 	NewUserService,
