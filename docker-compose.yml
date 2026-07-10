@@ -1,0 +1,95 @@
+services:
+  sub2api:
+    image: sub2api:eason-v2
+    container_name: sub2api
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    ports:
+      - "0.0.0.0:80:8080"
+    volumes:
+      - sub2api_data:/app/data
+      - ./config.yaml:/app/data/config.yaml:ro
+    environment:
+      - AUTO_SETUP=true
+      - SERVER_HOST=0.0.0.0
+      - SERVER_PORT=8080
+      - SERVER_MODE=release
+      - RUN_MODE=standard
+      - DATABASE_HOST=sub2api-postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=${POSTGRES_USER:-sub2api}
+      - DATABASE_PASSWORD=${POSTGRES_PASSWORD}
+      - DATABASE_DBNAME=${POSTGRES_DB:-sub2api}
+      - DATABASE_SSLMODE=disable
+      - REDIS_HOST=sub2api-redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}
+      - TZ=Asia/Shanghai
+    depends_on:
+      sub2api-postgres:
+        condition: service_healthy
+      sub2api-redis:
+        condition: service_healthy
+    networks:
+      - sub2api-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  sub2api-postgres:
+    image: postgres:18-alpine
+    container_name: sub2api-postgres
+    restart: unless-stopped
+    volumes:
+      - sub2api_pg_data:/var/lib/postgresql/data
+    environment:
+      - PGDATA=/var/lib/postgresql/data
+      - POSTGRES_USER=${POSTGRES_USER:-sub2api}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-sub2api}
+      - TZ=Asia/Shanghai
+    networks:
+      - sub2api-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sub2api} -d ${POSTGRES_DB:-sub2api}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  sub2api-redis:
+    image: redis:8-alpine
+    container_name: sub2api-redis
+    restart: unless-stopped
+    volumes:
+      - sub2api_redis_data:/data
+    command: redis-server --save 60 1 --appendonly yes --appendfsync everysec
+    environment:
+      - TZ=Asia/Shanghai
+    networks:
+      - sub2api-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  sub2api_data:
+  sub2api_pg_data:
+  sub2api_redis_data:
+
+networks:
+  sub2api-network:
+    driver: bridge
