@@ -857,6 +857,19 @@ type GatewayConfig struct {
 	// UserMessageQueue: 用户消息串行队列配置
 	// 对 role:"user" 的真实用户消息实施账号级串行化 + RPM 自适应延迟
 	UserMessageQueue UserMessageQueueConfig `mapstructure:"user_message_queue"`
+
+	// [custom] RequestLog: 请求/响应完整体记录 (SQLite),用于训练数据采集与调试
+	RequestLog GatewayRequestLogConfig `mapstructure:"request_log"`
+}
+
+// [custom] GatewayRequestLogConfig 请求/响应完整体日志配置 (SQLite 数据库)
+type GatewayRequestLogConfig struct {
+	Enabled        bool     `mapstructure:"enabled"`
+	Dir            string   `mapstructure:"dir"`         // base directory (kept for backward compat)
+	DbPath         string   `mapstructure:"db_path"`     // SQLite DB path, default: {Dir}/request_log.db
+	ArchiveDir     string   `mapstructure:"archive_dir"` // per-day archive .db files directory (read-only)
+	Platforms      []string `mapstructure:"platforms"`
+	ExcludedGroups []string `mapstructure:"excluded_groups"`
 }
 
 // GatewayOpenAIHTTP2Config OpenAI HTTP 上游协议配置。
@@ -2072,6 +2085,14 @@ func setDefaults() {
 	viper.SetDefault("gateway.user_message_queue.min_delay_ms", 200)
 	viper.SetDefault("gateway.user_message_queue.max_delay_ms", 2000)
 	viper.SetDefault("gateway.user_message_queue.cleanup_interval_seconds", 60)
+
+	// [custom] RequestLog: 请求/响应 SQLite 日志 (默认关闭)
+	viper.SetDefault("gateway.request_log.enabled", false)
+	viper.SetDefault("gateway.request_log.dir", "data/request_logs")
+	viper.SetDefault("gateway.request_log.db_path", "") // default computed as {dir}/request_log.db
+	viper.SetDefault("gateway.request_log.archive_dir", "")
+	viper.SetDefault("gateway.request_log.platforms", []string{"openai", "anthropic"})
+	viper.SetDefault("gateway.request_log.excluded_groups", []string{})
 
 	viper.SetDefault("gateway.tls_fingerprint.enabled", true)
 	viper.SetDefault("concurrency.ping_interval", 10)

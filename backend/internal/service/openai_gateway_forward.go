@@ -21,6 +21,12 @@ import (
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
 
+	// [custom] request_log: stash the pre-mutation request body for async logging.
+	if c != nil && s.shouldLogRequest(c) && len(body) > 0 {
+		snapshot := append([]byte(nil), body...)
+		c.Set("request_log.original_body", snapshot)
+	}
+
 	restrictionResult := s.detectCodexClientRestriction(c, account, body)
 	apiKeyID := getAPIKeyIDFromContext(c)
 	logCodexCLIOnlyDetection(ctx, c, account, apiKeyID, restrictionResult, body)
@@ -779,6 +785,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			responseID = strings.TrimSpace(streamResult.responseID)
 			imageCount = streamResult.imageCount
 			imageOutputSizes = streamResult.imageOutputSizes
+			// [custom] request_log: write openai streaming log asynchronously
+			if s.shouldLogRequest(c) && len(streamResult.completedEventData) > 0 {
+				if origBody := originalRequestBodyFromContext(c); origBody != nil {
+					go s.writeRequestLog(c, origBody, streamResult.completedEventData)
+				}
+			}
 		} else {
 			nonStreamResult, err := s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, upstreamModel)
 			if err != nil {
@@ -788,6 +800,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			responseID = strings.TrimSpace(nonStreamResult.responseID)
 			imageCount = nonStreamResult.imageCount
 			imageOutputSizes = nonStreamResult.imageOutputSizes
+			// [custom] request_log: write openai non-streaming log asynchronously
+			if s.shouldLogRequest(c) {
+				if respBody := stashedRawResponseFromContext(c); len(respBody) > 0 {
+					if origBody := originalRequestBodyFromContext(c); origBody != nil {
+						go s.writeRequestLogNonStreaming(c, origBody, respBody)
+					}
+				}
+			}
 		}
 		s.bindHTTPResponseAccount(ctx, c, account, responseID)
 

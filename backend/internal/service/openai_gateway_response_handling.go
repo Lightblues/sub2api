@@ -28,6 +28,9 @@ type openaiStreamingResult struct {
 	responseID       string
 	imageCount       int
 	imageOutputSizes []string
+	// [custom] completedEventData holds the raw JSON of the terminal response.completed/done event,
+	// used by request_log to store the reconstructed response. Nil if request_log was disabled or the event was not seen.
+	completedEventData []byte
 }
 
 type openaiNonStreamingResult struct {
@@ -151,13 +154,26 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 	streamOutputAccumulator := apicompat.NewBufferedResponseAccumulator()
 	streamImageOutputs := make([]json.RawMessage, 0, 1)
 	streamSeenImages := make(map[string]struct{})
+	// [custom] request_log: capture the raw terminal (response.completed/done/failed/…) event body
+	// so the gateway forward layer can persist the reconstructed response.
+	var completedEventData []byte
+	captureCompletedEventIfLogging := func(data []byte) {
+		if !s.shouldLogRequest(c) {
+			return
+		}
+		if len(data) == 0 {
+			return
+		}
+		completedEventData = append(completedEventData[:0], data...)
+	}
 	resultWithUsage := func() *openaiStreamingResult {
 		return &openaiStreamingResult{
-			usage:            usage,
-			firstTokenMs:     firstTokenMs,
-			responseID:       responseID,
-			imageCount:       imageCounter.Count(),
-			imageOutputSizes: imageCounter.Sizes(),
+			usage:              usage,
+			firstTokenMs:       firstTokenMs,
+			responseID:         responseID,
+			imageCount:         imageCounter.Count(),
+			imageOutputSizes:   imageCounter.Sizes(),
+			completedEventData: completedEventData,
 		}
 	}
 	finalizeStream := func() (*openaiStreamingResult, error) {
@@ -233,6 +249,8 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 			dataBytes := []byte(data)
 			if openAIStreamEventIsTerminal(data) {
 				sawTerminalEvent = true
+				// [custom] request_log: stash the terminal event's raw JSON (contains full response payload)
+				captureCompletedEventIfLogging(dataBytes)
 			}
 			eventType := strings.TrimSpace(gjson.GetBytes(dataBytes, "type").String())
 			if responseID == "" {
@@ -848,6 +866,11 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 
 	if !writeOpenAICompactSSEBridge(c, resp.StatusCode, body) {
 		c.Data(resp.StatusCode, contentType, body)
+	}
+
+	// [custom] request_log: stash raw response body for async logging
+	if c != nil {
+		c.Set(requestLogRawResponseCtxKey, body)
 	}
 
 	return &openaiNonStreamingResult{

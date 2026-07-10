@@ -270,10 +270,20 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		usage = streamResult.usage
 		firstTokenMs = streamResult.firstTokenMs
 		clientDisconnect = streamResult.clientDisconnect
+		// [custom] request_log: write anthropic passthrough streaming log
+		if s.shouldLogRequest(c) && len(streamResult.finalResponseLog) > 0 {
+			go s.writeAnthropicRequestLog(c, input.Body, streamResult.finalResponseLog)
+		}
 	} else {
 		usage, err = s.handleNonStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account)
 		if err != nil {
 			return nil, err
+		}
+		// [custom] request_log: write anthropic passthrough non-streaming log (body stashed via ctx)
+		if s.shouldLogRequest(c) {
+			if respBody := stashedRawResponseFromContext(c); len(respBody) > 0 {
+				go s.writeAnthropicRequestLogNonStreaming(c, input.Body, respBody)
+			}
 		}
 	}
 	if usage == nil {
@@ -403,6 +413,12 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	clientDisconnected := false
 	sawTerminalEvent := false
 
+	// [custom] request_log: SSE accumulator for anthropic passthrough streaming
+	var respAccumulator *anthropicResponseAccumulator
+	if s.shouldLogRequest(c) {
+		respAccumulator = newAnthropicResponseAccumulator()
+	}
+
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
 	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
@@ -492,20 +508,21 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					// 兜底补刷，确保最后一个未以空行结尾的事件也能及时送达客户端。
 					flusher.Flush()
 				}
+				logData := buildAccumulatorSnapshot(respAccumulator)
 				if !sawTerminalEvent {
 					if clientDisconnected && streamInterval > 0 {
 						lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
 						if time.Since(lastRead) >= streamInterval {
-							return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, fmt.Errorf("stream usage incomplete after timeout")
+							return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true, finalResponseLog: logData}, fmt.Errorf("stream usage incomplete after timeout")
 						}
 					}
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, fmt.Errorf("stream usage incomplete: missing terminal event")
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected, finalResponseLog: logData}, fmt.Errorf("stream usage incomplete: missing terminal event")
 				}
-				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected, finalResponseLog: logData}, nil
 			}
 			if ev.err != nil {
 				if sawTerminalEvent {
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected, finalResponseLog: buildAccumulatorSnapshot(respAccumulator)}, nil
 				}
 				if clientDisconnected {
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, fmt.Errorf("stream usage incomplete after disconnect: %w", ev.err)
@@ -531,6 +548,10 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					firstTokenMs = &ms
 				}
 				s.parseSSEUsagePassthrough(data, usage)
+				// [custom] request_log: feed data line into accumulator (eventType inferred from JSON body)
+				if respAccumulator != nil && trimmed != "" && trimmed != "[DONE]" {
+					respAccumulator.ProcessEvent("", []byte(trimmed))
+				}
 			} else {
 				trimmed := strings.TrimSpace(line)
 				if strings.HasPrefix(trimmed, "event:") && anthropicStreamEventIsTerminal(strings.TrimSpace(strings.TrimPrefix(trimmed, "event:")), "") {
@@ -790,6 +811,10 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 	}
 	body = reverseToolNamesIfPresent(c, body)
 	c.Data(resp.StatusCode, contentType, body)
+	// [custom] request_log: stash raw response body for async logging
+	if c != nil {
+		c.Set(requestLogRawResponseCtxKey, body)
+	}
 	return usage, nil
 }
 

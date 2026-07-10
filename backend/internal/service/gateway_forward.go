@@ -137,6 +137,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	}
 
 	body := parsed.Body.Bytes()
+	// [custom] request_log: stash pre-mutation body for async logging (no-op if disabled)
+	if c != nil && s.shouldLogRequest(c) {
+		snapshot := append([]byte(nil), body...)
+		c.Set("request_log.original_body", snapshot)
+	}
 	replaceBody := func(next []byte) error {
 		if err := parsed.ReplaceBody(next); err != nil {
 			return fmt.Errorf("rewrite request body: %w", err)
@@ -835,10 +840,24 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		usage = streamResult.usage
 		firstTokenMs = streamResult.firstTokenMs
 		clientDisconnect = streamResult.clientDisconnect
+		// [custom] request_log: write anthropic streaming log asynchronously (uses SSE accumulator output)
+		if s.shouldLogRequest(c) && len(streamResult.finalResponseLog) > 0 {
+			if origBody := originalRequestBodyFromContext(c); origBody != nil {
+				go s.writeAnthropicRequestLog(c, origBody, streamResult.finalResponseLog)
+			}
+		}
 	} else {
 		usage, err = s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, reqModel)
 		if err != nil {
 			return nil, err
+		}
+		// [custom] request_log: write anthropic non-streaming log asynchronously (body stashed via ctx by handleNonStreamingResponse)
+		if s.shouldLogRequest(c) {
+			if respBody := stashedRawResponseFromContext(c); len(respBody) > 0 {
+				if origBody := originalRequestBodyFromContext(c); origBody != nil {
+					go s.writeAnthropicRequestLogNonStreaming(c, origBody, respBody)
+				}
+			}
 		}
 	}
 

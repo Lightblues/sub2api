@@ -642,7 +642,8 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 type streamingResult struct {
 	usage            *ClaudeUsage
 	firstTokenMs     *int
-	clientDisconnect bool // 客户端是否在流式传输过程中断开
+	clientDisconnect bool   // 客户端是否在流式传输过程中断开
+	finalResponseLog []byte // [custom] 累积的最终响应 JSON (用于 request_log)
 }
 
 func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, startTime time.Time, originalModel, mappedModel string, mimicClaudeCode bool) (*streamingResult, error) {
@@ -790,6 +791,12 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	useNoopDeltaKeepalive := c != nil && c.Request != nil && shouldUseClaudeCodeNoopDeltaKeepalive(c.GetHeader("User-Agent"))
 	noopDeltaKeepaliveBlockIndex := -1
 	noopDeltaKeepaliveDeltaType := ""
+
+	// [custom] request_log: accumulate anthropic SSE events to reconstruct final response JSON
+	var respAccumulator *anthropicResponseAccumulator
+	if s.shouldLogRequest(c) {
+		respAccumulator = newAnthropicResponseAccumulator()
+	}
 
 	pendingEventLines := make([]string, 0, 4)
 
@@ -958,14 +965,15 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		case ev, ok := <-events:
 			if !ok {
 				// 上游完成，返回结果
+				logData := buildAccumulatorSnapshot(respAccumulator)
 				if !sawTerminalEvent {
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, fmt.Errorf("stream usage incomplete: missing terminal event")
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected, finalResponseLog: logData}, fmt.Errorf("stream usage incomplete: missing terminal event")
 				}
-				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
+				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected, finalResponseLog: logData}, nil
 			}
 			if ev.err != nil {
 				if sawTerminalEvent {
-					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
+					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected, finalResponseLog: buildAccumulatorSnapshot(respAccumulator)}, nil
 				}
 				// 检测 context 取消（客户端断开会导致 context 取消，进而影响上游读取）
 				if errors.Is(ev.err, context.Canceled) || errors.Is(ev.err, context.DeadlineExceeded) {
@@ -1018,9 +1026,13 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 				pendingEventLines = pendingEventLines[:0]
 				if err != nil {
 					if clientDisconnected {
-						return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, nil
+						return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true, finalResponseLog: buildAccumulatorSnapshot(respAccumulator)}, nil
 					}
 					return nil, err
+				}
+				// [custom] request_log: feed event into accumulator (eventType inferred from JSON body)
+				if respAccumulator != nil && data != "" && data != "[DONE]" {
+					respAccumulator.ProcessEvent("", []byte(data))
 				}
 
 				for _, block := range outputBlocks {
@@ -1399,6 +1411,11 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 
 	// 写入响应
 	c.Data(resp.StatusCode, contentType, body)
+
+	// [custom] request_log: stash raw response body for async logging by the caller
+	if c != nil {
+		c.Set(requestLogRawResponseCtxKey, body)
+	}
 
 	return &response.Usage, nil
 }
