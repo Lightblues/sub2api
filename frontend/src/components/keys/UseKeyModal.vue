@@ -440,24 +440,30 @@ function generateAnthropicFiles(baseUrl: string, apiKey: string): FileConfig[] {
   switch (activeTab.value) {
     case 'unix':
       path = 'Terminal'
+      // [custom] append CLAUDE_CODE_EFFORT_LEVEL=max
       content = `export ANTHROPIC_BASE_URL="${baseUrl}"
 export ANTHROPIC_AUTH_TOKEN="${apiKey}"
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
-export CLAUDE_CODE_ATTRIBUTION_HEADER=0`
+export CLAUDE_CODE_ATTRIBUTION_HEADER=0
+export CLAUDE_CODE_EFFORT_LEVEL=max`
       break
     case 'cmd':
       path = 'Command Prompt'
+      // [custom] append CLAUDE_CODE_EFFORT_LEVEL=max
       content = `set ANTHROPIC_BASE_URL=${baseUrl}
 set ANTHROPIC_AUTH_TOKEN=${apiKey}
 set CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
-set CLAUDE_CODE_ATTRIBUTION_HEADER=0`
+set CLAUDE_CODE_ATTRIBUTION_HEADER=0
+set CLAUDE_CODE_EFFORT_LEVEL=max`
       break
     case 'powershell':
       path = 'PowerShell'
+      // [custom] append CLAUDE_CODE_EFFORT_LEVEL=max
       content = `$env:ANTHROPIC_BASE_URL="${baseUrl}"
 $env:ANTHROPIC_AUTH_TOKEN="${apiKey}"
 $env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
-$env:CLAUDE_CODE_ATTRIBUTION_HEADER=0`
+$env:CLAUDE_CODE_ATTRIBUTION_HEADER=0
+$env:CLAUDE_CODE_EFFORT_LEVEL=max`
       break
     default:
       path = 'Terminal'
@@ -468,13 +474,16 @@ $env:CLAUDE_CODE_ATTRIBUTION_HEADER=0`
     ? '~/.claude/settings.json'
     : '%userprofile%\\.claude\\settings.json'
 
+  // [custom] append CLAUDE_CODE_EFFORT_LEVEL=max + default model
   const vscodeContent = `{
   "env": {
     "ANTHROPIC_BASE_URL": "${baseUrl}",
     "ANTHROPIC_AUTH_TOKEN": "${apiKey}",
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0"
-  }
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+    "CLAUDE_CODE_EFFORT_LEVEL": "max"
+  },
+  "model": "claude-opus-4-6"
 }`
 
   return [
@@ -533,6 +542,7 @@ function generateOpenAIFiles(baseUrl: string, apiKey: string): FileConfig[] {
   const configDir = isWindows ? '%userprofile%\\.codex' : '~/.codex'
 
   // config.toml content
+  // [custom] extend Codex context window to 400k / auto-compact at 360k
   const configContent = `model_provider = "OpenAI"
 model = "gpt-5.5"
 review_model = "gpt-5.5"
@@ -540,6 +550,10 @@ model_reasoning_effort = "xhigh"
 disable_response_storage = true
 network_access = "enabled"
 windows_wsl_setup_acknowledged = true
+model_context_window = 400000
+model_auto_compact_token_limit = 360000
+model_supports_reasoning_summaries = true
+model_reasoning_summary = "detailed"
 
 [model_providers.OpenAI]
 name = "OpenAI"
