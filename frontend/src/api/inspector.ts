@@ -82,6 +82,8 @@ export interface InspectorLogFilter {
   q?: string
   offset?: number
   limit?: number
+  /** "asc" | "desc" — undefined defaults to "desc" (newest first) on the server side. */
+  order?: 'asc' | 'desc'
 }
 
 async function getDates(): Promise<InspectorDateEntry[]> {

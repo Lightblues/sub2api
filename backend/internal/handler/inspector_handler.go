@@ -60,6 +60,7 @@ func (h *InspectorHandler) Logs(c *gin.Context) {
 	filter.SessionID = c.Query("session_id")
 	filter.Model = c.Query("model")
 	filter.Query = c.Query("q")
+	filter.Order = c.Query("order") // "asc" | "desc" (default: desc, newest first)
 	if v := c.Query("api_key_id"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			filter.APIKeyID = n
@@ -118,6 +119,7 @@ func (h *InspectorHandler) Export(c *gin.Context) {
 	filter.SessionID = c.Query("session_id")
 	filter.Model = c.Query("model")
 	filter.Query = c.Query("q")
+	filter.Order = c.Query("order")
 	if v := c.Query("api_key_id"); v != "" {
 		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
 			filter.APIKeyID = n

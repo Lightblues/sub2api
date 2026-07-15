@@ -103,6 +103,16 @@
           class="w-40 rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
           @keydown.enter="applyFilters"
         />
+        <!-- [custom] sort direction: default desc (newest first) -->
+        <select
+          v-model="sortOrder"
+          class="rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+          :title="t('inspector.sortOrder')"
+          @change="applyFilters"
+        >
+          <option value="desc">{{ t('inspector.sortDesc') }}</option>
+          <option value="asc">{{ t('inspector.sortAsc') }}</option>
+        </select>
         <button
           class="rounded bg-gray-700 px-3 py-1 text-xs text-white hover:bg-gray-800"
           @click="applyFilters"
@@ -329,6 +339,8 @@ const filterSessionId = ref('')
 const filterKeyId = ref('')
 const filterModel = ref('')
 const filterQuery = ref('')
+// [custom] sort direction — default "desc" (newest first, most useful for inspection)
+const sortOrder = ref<'asc' | 'desc'>('desc')
 
 const currentRecord = ref<InspectorRecordDetail | null>(null)
 const selectedRecordId = ref<number | null>(null)
@@ -358,7 +370,8 @@ const exportUrl = computed(() => {
     session_id: filterSessionId.value || undefined,
     api_key_id: filterKeyId.value ? Number(filterKeyId.value) : undefined,
     model: filterModel.value || undefined,
-    q: filterQuery.value || undefined
+    q: filterQuery.value || undefined,
+    order: sortOrder.value
   })
 })
 
@@ -403,6 +416,8 @@ function syncToUrl() {
   if (filterKeyId.value) q.api_key_id = filterKeyId.value
   if (filterModel.value) q.model = filterModel.value
   if (filterQuery.value) q.q = filterQuery.value
+  // [custom] only persist order when non-default (default is desc)
+  if (sortOrder.value === 'asc') q.order = 'asc'
   if (offset.value > 0) q.offset = String(offset.value)
   if (selectedRecordId.value) q.record = String(selectedRecordId.value)
 
@@ -419,6 +434,8 @@ function restoreFromUrl() {
   if (q.api_key_id && typeof q.api_key_id === 'string') filterKeyId.value = q.api_key_id
   if (q.model && typeof q.model === 'string') filterModel.value = q.model
   if (q.q && typeof q.q === 'string') filterQuery.value = q.q
+  // [custom] restore sort order (default desc)
+  if (q.order === 'asc' || q.order === 'desc') sortOrder.value = q.order
   if (q.offset) offset.value = Number(q.offset) || 0
   // ts is a legacy param from Usage deep-link
   if (q.ts && typeof q.ts === 'string' && !filterQuery.value) filterQuery.value = q.ts
@@ -473,6 +490,7 @@ async function loadLogs() {
       api_key_id: filterKeyId.value ? Number(filterKeyId.value) : undefined,
       model: filterModel.value || undefined,
       q: filterQuery.value || undefined,
+      order: sortOrder.value,
       offset: offset.value,
       limit
     })
@@ -545,6 +563,7 @@ function clearFilters() {
   filterKeyId.value = ''
   filterModel.value = ''
   filterQuery.value = ''
+  sortOrder.value = 'desc' // [custom] also reset sort to default
   applyFilters()
 }
 

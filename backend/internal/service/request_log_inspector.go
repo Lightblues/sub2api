@@ -70,6 +70,19 @@ type InspectorLogFilter struct {
 	APIKeyID  int64
 	Model     string
 	Query     string
+	// Order controls result ordering by ts. Accepts "asc" or "desc"; empty
+	// defaults to "desc" (newest first) — the common inspection case.
+	Order string
+}
+
+// sortDirection returns the SQL direction fragment (ASC / DESC) for f.Order.
+// Any value other than an explicit "asc" is treated as DESC so the default and
+// unrecognised inputs both surface newest-first.
+func (f *InspectorLogFilter) sortDirection() string {
+	if f != nil && strings.EqualFold(strings.TrimSpace(f.Order), "asc") {
+		return "ASC"
+	}
+	return "DESC"
 }
 
 type InspectorLogResult struct {
@@ -371,7 +384,7 @@ func (s *RequestLogReaderService) QueryInspectorLogs(date string, f *InspectorLo
 		`SELECT id, ts, api_key_id, model, session_type, session_id,
 		        status, input_tokens, output_tokens, cached_tokens,
 		        reasoning_tokens, total_tokens
-		 FROM records WHERE `+where+` ORDER BY ts LIMIT ? OFFSET ?`, queryParams...,
+		 FROM records WHERE `+where+` ORDER BY ts `+f.sortDirection()+` LIMIT ? OFFSET ?`, queryParams...,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("query logs: %w", err)
@@ -565,7 +578,7 @@ func (s *RequestLogReaderService) ExportInspectorLogs(date string, f *InspectorL
 	}
 
 	where, params := buildInspectorWhere(date, f)
-	rows, err := db.Query("SELECT raw_json FROM records WHERE "+where+" ORDER BY ts", params...)
+	rows, err := db.Query("SELECT raw_json FROM records WHERE "+where+" ORDER BY ts "+f.sortDirection(), params...)
 	if err != nil {
 		return nil, fmt.Errorf("export: %w", err)
 	}
