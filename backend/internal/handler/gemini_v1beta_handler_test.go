@@ -39,7 +39,11 @@ func TestGeminiV1BetaListModels_ForcedAntigravityAppliesAllowlist(t *testing.T) 
 	})
 	c.Set(string(middleware.ContextKeyForcePlatform), service.PlatformAntigravity)
 
-	(&GatewayHandler{}).GeminiV1BetaListModels(c)
+	groupID := int64(42)
+	key, _ := middleware.GetAPIKeyFromContext(c)
+	key.GroupID = &groupID
+	repo := &geminiAllowlistAccountRepoStub{}
+	(&GatewayHandler{geminiCompatService: service.NewGeminiMessagesCompatService(repo, nil, nil, nil, nil, nil, nil, nil, nil)}).GeminiV1BetaListModels(c)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	var got antigravity.GeminiModelsListResponse
@@ -105,7 +109,7 @@ func TestGeminiV1BetaHandler_ListModelsAntigravityFallback(t *testing.T) {
 		expectedBehavior string
 	}{
 		{
-			name:             "有Gemini账户-调用ForwardAIStudioGET",
+			name:             "有Gemini账户-调用ForwardListModels",
 			hasGeminiAccount: true,
 			hasAntigravity:   false,
 			expectedBehavior: "forward_to_upstream",
@@ -151,7 +155,7 @@ func TestGeminiV1BetaHandler_GetModelAntigravityFallback(t *testing.T) {
 		expectedBehavior string
 	}{
 		{
-			name:             "有Gemini账户-调用ForwardAIStudioGET",
+			name:             "有Gemini账户-调用ForwardGetModel",
 			hasGeminiAccount: true,
 			hasAntigravity:   false,
 			expectedBehavior: "forward_to_upstream",
